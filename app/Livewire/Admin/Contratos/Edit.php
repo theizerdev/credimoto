@@ -433,7 +433,16 @@ class Edit extends Component
                 'observaciones' => $this->observaciones
             ]);
 
-            // 2. Obtener cuotas que ya tienen pagos realizados
+            // 2. Obtener el monto total pagado para este contrato (de todas las cuotas)
+            $montoTotalPagado = \App\Models\PagoDetalle::whereHas('planPago', function($query) {
+                    $query->where('contrato_id', $this->contrato->id);
+                })
+                ->whereHas('pago', function($query) {
+                    $query->where('estado', '!=', 'cancelado');
+                })
+                ->sum('subtotal');
+
+            // 3. Obtener todas las cuotas antiguas para identificar las que tenían pagos
             $cuotasConPagosIds = \App\Models\PagoDetalle::whereHas('planPago', function($query) {
                     $query->where('contrato_id', $this->contrato->id);
                 })
@@ -445,115 +454,45 @@ class Edit extends Component
                 ->values()
                 ->toArray();
 
-            // 3. Agrupar las nuevas cuotas por número para facilitar la comparación
-            $nuevasCuotas = collect($this->plan_proyectado)->keyBy('numero');
+            // 4. Eliminar el plan de pagos anterior
+            $this->contrato->planPagos()->delete();
 
-            // 4. Obtener todas las cuotas actuales antes de eliminarlas
-            $cuotasActuales = $this->contrato->planPagos()->get()->keyBy('numero_cuota');
+            // 5. Crear nuevo Plan de Pagos y aplicar pagos acumulativamente
+            $montoPendienteAplicar = $montoTotalPagado; // Este es el monto total que se ha pagado y que hay que distribuir
+            
+            foreach ($this->plan_proyectado as $index => $cuota) {
+                $planPago = PlanPago::create([
+                    'contrato_id' => $this->contrato->id,
+                    'empresa_id' => $this->empresa_id,
+                    'numero_cuota' => $cuota['numero'],
+                    'tipo_cuota' => $cuota['tipo'],
+                    'fecha_vencimiento' => $cuota['fecha'],
+                    'monto_capital' => $cuota['monto_capital'],
+                    'monto_interes' => $cuota['monto_interes'],
+                    'monto_total' => $cuota['total'],
+                    'saldo_pendiente' => $cuota['total'], // Inicialmente debe todo el monto de la cuota
+                    'estado' => 'pendiente'
+                ]);
 
-            // 5. Procesar cada cuota
-            foreach ($this->plan_proyectado as $cuota) {
-                // Buscar si ya existía una cuota con este número
-                $cuotaExistente = $cuotasActuales->get($cuota['numero']);
-                
-                if ($cuota['numero'] == 0) {
-                    // Cuota inicial, manejarla normalmente
-                    if ($cuotaExistente) {
-                        // Actualizar la cuota existente
-                        $cuotaExistente->update([
-                            'tipo_cuota' => $cuota['tipo'],
-                            'fecha_vencimiento' => $cuota['fecha'],
-                            'monto_capital' => $cuota['monto_capital'],
-                            'monto_interes' => $cuota['monto_interes'],
-                            'monto_total' => $cuota['total'],
-                            'saldo_pendiente' => $cuota['total'],
-                        ]);
-                    } else {
-                        // Crear nueva cuota
-                        PlanPago::create([
-                            'contrato_id' => $this->contrato->id,
-                            'empresa_id' => $this->empresa_id,
-                            'numero_cuota' => $cuota['numero'],
-                            'tipo_cuota' => $cuota['tipo'],
-                            'fecha_vencimiento' => $cuota['fecha'],
-                            'monto_capital' => $cuota['monto_capital'],
-                            'monto_interes' => $cuota['monto_interes'],
-                            'monto_total' => $cuota['total'],
-                            'saldo_pendiente' => $cuota['total'],
-                            'estado' => 'pendiente'
-                        ]);
-                    }
-                } else {
-                    // Cuotas regulares (no iniciales)
-                    if ($cuotaExistente) {
-                        // Verificar si esta cuota ya tiene pagos realizados
-                        $tienePagos = in_array($cuotaExistente->id, $cuotasConPagosIds);
-                        
-                        if ($tienePagos) {
-                            // Esta cuota ya tiene pagos, obtener el monto total pagado
-                            $montoPagado = \App\Models\PagoDetalle::where('plan_pago_id', $cuotaExistente->id)
-                                ->whereHas('pago', function($query) {
-                                    $query->where('estado', '!=', 'cancelado');
-                                })
-                                ->sum('subtotal');
-                            
-                            $cuotaExistente->update([
-                                'tipo_cuota' => $cuota['tipo'],
-                                'fecha_vencimiento' => $cuota['fecha'],
-                                'monto_capital' => $cuota['monto_capital'],
-                                'monto_interes' => $cuota['monto_interes'],
-                                'monto_total' => $cuota['total'],
-                                'saldo_pendiente' => max(0, $cuota['total'] - $montoPagado),
-                            ]);
-                            
-                            // Actualizar el estado según el monto pagado
-                            if ($montoPagado >= $cuota['total']) {
-                                $cuotaExistente->update(['estado' => 'pagado']);
-                            } elseif ($montoPagado > 0) {
-                                $cuotaExistente->update(['estado' => 'parcial']);
-                            }
-                        } else {
-                            // Esta cuota no tiene pagos, podemos actualizarla completamente
-                            $cuotaExistente->update([
-                                'tipo_cuota' => $cuota['tipo'],
-                                'fecha_vencimiento' => $cuota['fecha'],
-                                'monto_capital' => $cuota['monto_capital'],
-                                'monto_interes' => $cuota['monto_interes'],
-                                'monto_total' => $cuota['total'],
-                                'saldo_pendiente' => $cuota['total'],
-                                'estado' => 'pendiente'
-                            ]);
-                        }
-                    } else {
-                        // Crear nueva cuota
-                        PlanPago::create([
-                            'contrato_id' => $this->contrato->id,
-                            'empresa_id' => $this->empresa_id,
-                            'numero_cuota' => $cuota['numero'],
-                            'tipo_cuota' => $cuota['tipo'],
-                            'fecha_vencimiento' => $cuota['fecha'],
-                            'monto_capital' => $cuota['monto_capital'],
-                            'monto_interes' => $cuota['monto_interes'],
-                            'monto_total' => $cuota['total'],
-                            'saldo_pendiente' => $cuota['total'],
-                            'estado' => 'pendiente'
-                        ]);
-                    }
-                }
-            }
-
-            // 6. Eliminar cuotas que ya no existen en la nueva proyección (excepto las que tienen pagos)
-            foreach ($cuotasActuales as $cuotaActual) {
-                if (!$nuevasCuotas->has($cuotaActual->numero_cuota)) {
-                    // Verificar si esta cuota tiene pagos antes de eliminarla
-                    $tienePagos = in_array($cuotaActual->id, $cuotasConPagosIds);
+                // Aplicar el pago acumulativo a esta cuota en orden
+                if ($montoPendienteAplicar > 0 && $cuota['numero'] > 0) { // No aplicar a la cuota inicial (número 0)
+                    // Calcular cuánto se puede aplicar a esta cuota
+                    $montoAplicable = min($montoPendienteAplicar, $cuota['total']);
                     
-                    if ($tienePagos) {
-                        // Esta cuota ya tenía pagos, no la eliminamos para preservar el historial
-                        continue;
-                    } else {
-                        // Esta cuota no existe en la nueva proyección y no tenía pagos, podemos eliminarla
-                        $cuotaActual->delete();
+                    // Actualizar el saldo pendiente de la cuota
+                    $nuevoSaldoPendiente = max(0, $cuota['total'] - $montoAplicable);
+                    
+                    $planPago->update([
+                        'saldo_pendiente' => $nuevoSaldoPendiente
+                    ]);
+                    
+                    // Actualizar el estado de la cuota según el pago aplicado
+                    if ($montoAplicable >= $cuota['total']) {
+                        $planPago->update(['estado' => 'pagado']);
+                        $montoPendienteAplicar -= $cuota['total'];
+                    } elseif ($montoAplicable > 0) {
+                        $planPago->update(['estado' => 'parcial']);
+                        $montoPendienteAplicar -= $montoAplicable;
                     }
                 }
             }
