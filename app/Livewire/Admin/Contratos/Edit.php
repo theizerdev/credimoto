@@ -205,9 +205,22 @@ class Edit extends Component
         $this->total_cuotas_calculadas = $numCuotas;
 
         if ($this->monto_financiado > 0 && $numCuotas > 0) {
-            $interes_total = $this->monto_financiado * ($this->tasa_interes_anual / 100) * ($this->plazo_semanas / 52);
-            $total_a_pagar = $this->monto_financiado + $interes_total;
-            $this->cuota_estimada = $total_a_pagar / $numCuotas;
+            // Calcular el valor semanal primero como referencia
+            $numCuotasSemanal = $this->plazo_semanas; // Número de cuotas si fuera semanal
+            $capitalPorCuotaSemanal = $this->monto_financiado / $numCuotasSemanal;
+            $interesPorCuotaSemanal = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / 52; // 52 semanas por año
+            $cuotaSemanal = $capitalPorCuotaSemanal + $interesPorCuotaSemanal;
+            
+            if ($this->frecuencia_pago === 'quincenal') {
+                // Para quincenal, la cuota debe ser exactamente el doble de la cuota semanal
+                $this->cuota_estimada = $cuotaSemanal * 2;
+            } else {
+                // Para otros casos, usar la lógica original adaptada
+                $periodsPerYear = $this->getPeriodsPerYear();
+                $interes_total = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / $periodsPerYear * $numCuotas;
+                $total_a_pagar = $this->monto_financiado + $interes_total;
+                $this->cuota_estimada = $total_a_pagar / $numCuotas;
+            }
         } else {
             $this->cuota_estimada = 0;
         }
@@ -310,7 +323,19 @@ class Edit extends Component
 
         $saldo = $this->monto_financiado;
         $capital_por_cuota = $this->monto_financiado / $numCuotas;
-        $interes_por_cuota = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / $periodsPerYear;
+        
+        // Calcular interés por cuota basado en la frecuencia de pago
+        if ($this->frecuencia_pago === 'quincenal') {
+            // Para quincenal, usar la cuota semanal como base y duplicarla
+            $cuotaSemanal = $this->monto_financiado / $this->plazo_semanas + ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / 52;
+            // La cuota quincenal es el doble de la cuota semanal
+            $cuotaQuincenal = $cuotaSemanal * 2;
+            // Desglosar la cuota quincenal en capital e interés
+            $capital_por_cuota = $this->monto_financiado / $numCuotas;
+            $interes_por_cuota = $cuotaQuincenal - $capital_por_cuota;
+        } else {
+            $interes_por_cuota = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / $periodsPerYear;
+        }
 
         if ($this->cuota_inicial > 0) {
             $plan[] = [
@@ -333,7 +358,6 @@ class Edit extends Component
         for ($i = 1; $i <= $numCuotas; $i++) {
             $total_cuota = $capital_por_cuota + $interes_por_cuota;
             $saldo -= $capital_por_cuota;
-
             $plan[] = [
                 'numero' => $i,
                 'tipo' => $tipoCuota,
