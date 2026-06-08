@@ -83,6 +83,7 @@ class PagoService
     {
         $pagoDetalle = PagoDetalle::create([
             'pago_id' => $pago->id,
+            'cliente_id' => $pago->cliente_id,
             'concepto_pago_id' => $detalle['concepto_pago_id'],
             'plan_pago_id' => $detalle['plan_pago_id'] ?? null,
             'descripcion' => $detalle['descripcion'],

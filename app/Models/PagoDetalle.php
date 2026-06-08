@@ -8,6 +8,7 @@ class PagoDetalle extends Model
 {
     protected $fillable = [
         'pago_id',
+        'cliente_id',
         'concepto_pago_id',
         'plan_pago_id',
         'descripcion',
@@ -25,6 +26,11 @@ class PagoDetalle extends Model
     public function pago()
     {
         return $this->belongsTo(Pago::class);
+    }
+
+    public function cliente()
+    {
+        return $this->belongsTo(\App\Models\Cliente::class, 'cliente_id');
     }
 
     public function conceptoPago()

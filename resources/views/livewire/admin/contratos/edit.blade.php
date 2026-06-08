@@ -309,7 +309,9 @@
                                                             <th class="text-end">Capital</th>
                                                             <th class="text-end">Interés</th>
                                                             <th class="text-end">Total Cuota</th>
+                                                            <th class="text-end">Pagado</th>
                                                             <th class="text-end">Saldo Restante</th>
+                                                            <th>Estado</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -320,8 +322,20 @@
                                                             <td class="text-end">${{ number_format($cuota['monto_capital'], 2) }}</td>
                                                             <td class="text-end">${{ number_format($cuota['monto_interes'], 2) }}</td>
                                                             <td class="text-end fw-bold">${{ number_format($cuota['total'], 2) }}</td>
+                                                            <td class="text-end text-success">${{ number_format($cuota['monto_pagado_aplicado'] ?? 0, 2) }}</td>
                                                             <td class="text-end text-muted">${{ number_format($cuota['saldo'], 2) }}</td>
+                                                            <td class="text-capitalize">{{ $cuota['estado'] ?? 'pendiente' }}</td>
                                                         </tr>
+                                                        @if(!empty($cuota['pagos_aplicados']))
+                                                        <tr>
+                                                            <td colspan="8" class="small text-muted">
+                                                                Pagos aplicados:
+                                                                @foreach($cuota['pagos_aplicados'] as $p)
+                                                                    <span class="badge bg-light text-dark">{{ optional(\Carbon\Carbon::parse($p['fecha']))->format('d/m/Y') ?? '-' }}: ${{ number_format($p['monto'], 2) }}</span>
+                                                                @endforeach
+                                                            </td>
+                                                        </tr>
+                                                        @endif
                                                         @endforeach
                                                     </tbody>
                                                 </table>

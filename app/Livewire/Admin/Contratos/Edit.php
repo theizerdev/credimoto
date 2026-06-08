@@ -388,6 +388,84 @@ class Edit extends Component
             }
         }
 
+        // Mapear pagos existentes (PagoDetalle) al plan proyectado para la vista de confirmación
+        $pagosDetalles = \App\Models\PagoDetalle::with('pago')
+            ->where(function($q) {
+                $q->whereHas('planPago', function($query) {
+                    $query->where('contrato_id', $this->contrato->id);
+                })
+                ->orWhere('cliente_id', $this->contrato->cliente_id);
+            })
+            ->whereHas('pago', function($query) {
+                $query->where('estado', '!=', 'cancelado');
+            })
+            ->get()
+            ->sortBy(fn($d) => optional($d->pago)->fecha?->getTimestamp() ?? 0)
+            ->values();
+
+        if ($pagosDetalles->isNotEmpty()) {
+            $detalleIndex = 0;
+
+            foreach ($plan as $idx => &$p) {
+                $p['monto_pagado_aplicado'] = 0;
+                $p['pagos_aplicados'] = [];
+                $p['estado'] = 'pendiente';
+
+                // No aplicar saldo acumulado a la cuota inicial (numero 0)
+                if ($p['numero'] == 0) {
+                    continue;
+                }
+
+                $restoCuota = (float) $p['total'];
+
+                while ($restoCuota > 0 && isset($pagosDetalles[$detalleIndex])) {
+                    $detalle = $pagosDetalles[$detalleIndex];
+                    $montoDetalle = (float) $detalle->subtotal;
+
+                    if ($montoDetalle <= 0) {
+                        $detalleIndex++;
+                        continue;
+                    }
+
+                    $tomar = min($montoDetalle, $restoCuota);
+
+                    $p['pagos_aplicados'][] = [
+                        'pago_id' => $detalle->pago_id,
+                        'detalle_id' => $detalle->id,
+                        'monto' => round($tomar, 2),
+                        'fecha' => optional($detalle->pago)->fecha?->toDateString()
+                    ];
+
+                    $p['monto_pagado_aplicado'] += $tomar;
+                    $restoCuota -= $tomar;
+
+                    // Reducir subtotal temporalmente en la colección para consumir parcialmente
+                    $pagosDetalles[$detalleIndex]->subtotal = max(0, $montoDetalle - $tomar);
+                    if ($pagosDetalles[$detalleIndex]->subtotal <= 0) {
+                        $detalleIndex++;
+                    }
+                }
+
+                // Ajustar saldo y estado visual
+                $p['monto_pagado_aplicado'] = round($p['monto_pagado_aplicado'], 2);
+                $p['saldo'] = max(0, round($p['total'] - $p['monto_pagado_aplicado'], 2));
+                if ($p['monto_pagado_aplicado'] >= $p['total']) {
+                    $p['estado'] = 'pagado';
+                } elseif ($p['monto_pagado_aplicado'] > 0) {
+                    $p['estado'] = 'parcial';
+                }
+            }
+            unset($p);
+        } else {
+            // Inicializar campos cuando no hay pagos
+            foreach ($plan as $idx => &$p) {
+                $p['monto_pagado_aplicado'] = 0;
+                $p['pagos_aplicados'] = [];
+                $p['estado'] = 'pendiente';
+            }
+            unset($p);
+        }
+
         $this->plan_proyectado = $plan;
         $this->step = 3;
     }
@@ -433,33 +511,33 @@ class Edit extends Component
                 'observaciones' => $this->observaciones
             ]);
 
-            // 2. Obtener el monto total pagado para este contrato (de todas las cuotas)
-            $montoTotalPagado = \App\Models\PagoDetalle::whereHas('planPago', function($query) {
-                    $query->where('contrato_id', $this->contrato->id);
+            // 2. Obtener los detalles de pagos (para reasignarlos después)
+            $pagosDetalles = \App\Models\PagoDetalle::with('pago')
+                ->where(function($q) {
+                    $q->whereHas('planPago', function($query) {
+                        $query->where('contrato_id', $this->contrato->id);
+                    })
+                    ->orWhere('cliente_id', $this->contrato->cliente_id);
                 })
                 ->whereHas('pago', function($query) {
                     $query->where('estado', '!=', 'cancelado');
                 })
-                ->sum('subtotal');
+                ->get()
+                ->sortBy(fn($d) => optional($d->pago)->fecha?->getTimestamp() ?? 0)
+                ->values();
 
-            // 3. Obtener todas las cuotas antiguas para identificar las que tenían pagos
-            $cuotasConPagosIds = \App\Models\PagoDetalle::whereHas('planPago', function($query) {
-                    $query->where('contrato_id', $this->contrato->id);
-                })
-                ->whereHas('pago', function($query) {
-                    $query->where('estado', '!=', 'cancelado');
-                })
-                ->pluck('plan_pago_id')
-                ->unique()
-                ->values()
-                ->toArray();
+            // Monto total pagado
+            $montoTotalPagado = $pagosDetalles->sum('subtotal');
 
-            // 4. Eliminar el plan de pagos anterior
+            // Guardar una copia en memoria del iterador para reasignar montos
+            $detalleIndex = 0;
+
+            // 3. Eliminar el plan de pagos anterior (los PagoDetalle quedan con plan_pago_id = null)
             $this->contrato->planPagos()->delete();
 
-            // 5. Crear nuevo Plan de Pagos y aplicar pagos acumulativamente
+            // 4. Crear nuevo Plan de Pagos y aplicar pagos acumulativamente
             $montoPendienteAplicar = $montoTotalPagado; // Este es el monto total que se ha pagado y que hay que distribuir
-            
+
             foreach ($this->plan_proyectado as $index => $cuota) {
                 $planPago = PlanPago::create([
                     'contrato_id' => $this->contrato->id,
@@ -478,14 +556,14 @@ class Edit extends Component
                 if ($montoPendienteAplicar > 0 && $cuota['numero'] > 0) { // No aplicar a la cuota inicial (número 0)
                     // Calcular cuánto se puede aplicar a esta cuota
                     $montoAplicable = min($montoPendienteAplicar, $cuota['total']);
-                    
+
                     // Actualizar el saldo pendiente de la cuota
                     $nuevoSaldoPendiente = max(0, $cuota['total'] - $montoAplicable);
-                    
+
                     $planPago->update([
                         'saldo_pendiente' => $nuevoSaldoPendiente
                     ]);
-                    
+
                     // Actualizar el estado de la cuota según el pago aplicado
                     if ($montoAplicable >= $cuota['total']) {
                         $planPago->update(['estado' => 'pagado']);
@@ -493,6 +571,47 @@ class Edit extends Component
                     } elseif ($montoAplicable > 0) {
                         $planPago->update(['estado' => 'parcial']);
                         $montoPendienteAplicar -= $montoAplicable;
+                    }
+
+                    // Reasignar PagoDetalle existentes a este nuevo PlanPago hasta cubrir $montoAplicable
+                    $restoPorAsignar = $montoAplicable;
+                    while ($restoPorAsignar > 0 && isset($pagosDetalles[$detalleIndex])) {
+                        $detalle = $pagosDetalles[$detalleIndex];
+                        $montoDetalle = (float) $detalle->subtotal;
+
+                        if ($montoDetalle <= 0) {
+                            $detalleIndex++;
+                            continue;
+                        }
+
+                        if ($montoDetalle <= $restoPorAsignar + 0.0001) {
+                            // Asignar todo el detalle a la cuota
+                            $detalle->plan_pago_id = $planPago->id;
+                            $detalle->save();
+                            $restoPorAsignar -= $montoDetalle;
+                            $detalleIndex++;
+                        } else {
+                            // Dividir el detalle: crear uno nuevo con la parte asignada y reducir el original
+                            $asignado = $restoPorAsignar;
+
+                            \App\Models\PagoDetalle::create([
+                                'pago_id' => $detalle->pago_id,
+                                'cliente_id' => optional($detalle->pago)->cliente_id ?? $this->contrato->cliente_id,
+                                'concepto_pago_id' => $detalle->concepto_pago_id,
+                                'plan_pago_id' => $planPago->id,
+                                'descripcion' => $detalle->descripcion,
+                                'cantidad' => 1,
+                                'precio_unitario' => $asignado
+                            ]);
+
+                            // Reducir el subtotal del detalle original (ajustando cantidad/precio para mantener consistencia)
+                            $nuevoSubtotalOriginal = $montoDetalle - $asignado;
+                            $detalle->cantidad = 1;
+                            $detalle->precio_unitario = $nuevoSubtotalOriginal;
+                            $detalle->save();
+
+                            $restoPorAsignar = 0;
+                        }
                     }
                 }
             }
