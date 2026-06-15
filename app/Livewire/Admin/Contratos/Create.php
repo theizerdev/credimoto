@@ -276,9 +276,8 @@ class Create extends Component
                     $fecha_pago->day = $fecha_pago->daysInMonth;
                 }
             } elseif ($this->frecuencia_pago === 'quincenal') {
-                // Para quincenal: sumar 15 días naturales desde la fecha de inicio
-                $fecha_pago->addDays(15);
-                // Asegurar que caiga en un día hábil (Lunes a Sábado)
+                // Regla nueva: para cuotas quincenales, la cuota #1 debe vencer en el mismo día del registro/edición
+                // (fecha_inicio actual). Se ajusta a día hábil si cae domingo.
                 $fecha_pago = $this->getNextBusinessDay($fecha_pago);
             } 
             else {
