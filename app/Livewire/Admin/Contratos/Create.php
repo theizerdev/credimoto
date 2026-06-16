@@ -255,37 +255,29 @@ class Create extends Component
         $this->calculateTotals();
         
         $plan = [];
-        $fecha = Carbon::parse($this->fecha_inicio);
+        $fecha_pago = Carbon::parse($this->fecha_inicio);
         $numCuotas = $this->getNumCuotas();
         $periodsPerYear = $this->getPeriodsPerYear();
 
-        // Regla nueva: para cuotas semanales, la cuota #1 debe caer el día del registro/edición
-        // (es decir, fecha_inicio actual). Para mantener consistencia, el primer vencimiento semanal
-        // ya no se calcula sumando 7 días.
+        // Regla: si existe cuota inicial (numero 0 en fecha_inicio), la cuota #1 debe moverse
+        // a la semana siguiente (+7 días) o quincena (+15 días) según el tipo.
+        // Luego se ajusta a día hábil (Lunes a Sábado).
         if ($this->frecuencia_pago === 'semanal') {
-            $fecha_pago = $this->getNextBusinessDay($fecha->copy());
+            $fecha_pago->addDays(7);
+            $fecha_pago = $this->getNextBusinessDay($fecha_pago);
+        } elseif ($this->frecuencia_pago === 'quincenal') {
+            $fecha_pago->addDays(15);
+            $fecha_pago = $this->getNextBusinessDay($fecha_pago);
         } else {
-            $fecha_pago = $fecha->copy();
-
-            // Calcular la fecha de la primera cuota según la frecuencia
-            if ($this->frecuencia_pago === 'mensual') {
-                $fecha_pago->addMonth();
-                try {
-                    $fecha_pago->day = $this->dia_pago_mensual;
-                } catch (\Exception $e) {
-                    $fecha_pago->day = $fecha_pago->daysInMonth;
-                }
-            } elseif ($this->frecuencia_pago === 'quincenal') {
-                // Regla nueva: para cuotas quincenales, la cuota #1 debe vencer en el mismo día del registro/edición
-                // (fecha_inicio actual). Se ajusta a día hábil si cae domingo.
-                $fecha_pago = $this->getNextBusinessDay($fecha_pago);
-            } 
-            else {
-                // Para semanal: sumar 7 días desde la fecha de inicio (caso por defecto si cambia frecuencia)
-                $fecha_pago->addDays(7);
-                $fecha_pago = $this->getNextBusinessDay($fecha_pago);
+            // Mensual: la siguiente cuota va al próximo mes y cae en dia_pago_mensual (ajustado).
+            $fecha_pago->addMonth();
+            try {
+                $fecha_pago->day = $this->dia_pago_mensual;
+            } catch (\Exception $e) {
+                $fecha_pago->day = $fecha_pago->daysInMonth;
             }
         }
+
 
 
         $saldo = $this->monto_financiado;
