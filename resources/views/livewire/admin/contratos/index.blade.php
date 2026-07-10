@@ -266,21 +266,34 @@
                                             <a class="dropdown-item" href="{{ route('admin.contratos.show', $contrato->id) }}">
                                                 <i class="ri ri-eye-line me-1"></i> Ver Detalle
                                             </a>
-                                            @unless($showDeleted)
+                                      
                                             @can('edit contratos')
                                             <a class="dropdown-item" href="{{ route('admin.contratos.edit', $contrato->id) }}">
                                                 <i class="ri ri-pencil-line me-1"></i> Editar
                                             </a>
                                             @endcan
-                                            @else
-                                            @can('delete contratos')
+                                           
+                                             @if($contrato->deleted_at != null)
+
+                                              
                                             <button type="button" class="dropdown-item text-success"
                                                     wire:click="restore({{ $contrato->id }})"
                                                     wire:confirm="¿Estás seguro de que deseas restaurar este contrato?">
                                                 <i class="ri ri-refresh-line me-1"></i> Restaurar
                                             </button>
-                                            @endcan
-                                            @endunless
+                                            
+                                            @else
+                                            <button type="button" class="dropdown-item text-danger"
+                                                    wire:click="delete({{ $contrato->id }})"
+                                                    wire:confirm="¿Estás seguro de que deseas eliminar este contrato?">
+                                                <i class="ri ri-eraser-line me-1"></i> Eliminar
+                                            </button>
+                                            
+                                            @endif
+                                            
+                                             
+                                           
+                                            
                                         </div>
                                     </div>
                                 </td>

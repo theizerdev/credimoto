@@ -38,9 +38,9 @@ return [
 
         'whatsapp_api' => [
             'driver' => 'mysql',
-            'host' => '158.69.175.224',
+            'host' => '166.1.85.56',
             'port' => '3306',
-            'database' => 'mijveapi',
+            'database' => 'credimoto',
             'username' => 'root',
             'password' => 'AdaThei04112023*',
             'charset' => 'utf8mb4',

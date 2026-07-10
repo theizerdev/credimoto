@@ -64,6 +64,12 @@ class Index extends Component
         $contrato->restore();
         session()->flash('message', 'Contrato restaurado correctamente.');
     }
+    public function delete($id)
+    {
+        $contrato = Contrato::withTrashed()->findOrFail($id);
+        $contrato->delete();
+        session()->flash('message', 'Contrato restaurado correctamente.');
+    }
 
     private function buildBaseQuery()
     {

@@ -164,22 +164,11 @@ class Create extends Component
         $this->total_cuotas_calculadas = $numCuotas;
         
         if ($this->monto_financiado > 0 && $numCuotas > 0) {
-            // Calcular el valor semanal primero como referencia
-            $numCuotasSemanal = $this->plazo_semanas; // Número de cuotas si fuera semanal
-            $capitalPorCuotaSemanal = $this->monto_financiado / $numCuotasSemanal;
-            $interesPorCuotaSemanal = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / 52; // 52 semanas por año
-            $cuotaSemanal = $capitalPorCuotaSemanal + $interesPorCuotaSemanal;
-            
-            if ($this->frecuencia_pago === 'quincenal') {
-                // Para quincenal, la cuota debe ser exactamente el doble de la cuota semanal
-                $this->cuota_estimada = $cuotaSemanal * 2;
-            } else {
-                // Para otros casos, usar la lógica original adaptada
-                $periodsPerYear = $this->getPeriodsPerYear();
-                $interes_total = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / $periodsPerYear * $numCuotas;
-                $total_a_pagar = $this->monto_financiado + $interes_total;
-                $this->cuota_estimada = $total_a_pagar / $numCuotas;
-            }
+            // Lógica de cálculo de cuota unificada para todas las frecuencias
+            $periodsPerYear = $this->getPeriodsPerYear();
+            $interes_total = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / $periodsPerYear * $numCuotas;
+            $total_a_pagar = $this->monto_financiado + $interes_total;
+            $this->cuota_estimada = $total_a_pagar / $numCuotas;
         } else {
             $this->cuota_estimada = 0;
         }
@@ -259,18 +248,27 @@ class Create extends Component
         $numCuotas = $this->getNumCuotas();
         $periodsPerYear = $this->getPeriodsPerYear();
 
-        // Regla: si existe cuota inicial (numero 0 en fecha_inicio), la cuota #1 debe moverse
-        // a la semana siguiente (+7 días) o quincena (+15 días) según el tipo.
-        // Luego se ajusta a día hábil (Lunes a Sábado).
+        // Define la fecha de la primera cuota según la frecuencia de pago
         if ($this->frecuencia_pago === 'semanal') {
-            $fecha_pago->addDays(7);
-            $fecha_pago = $this->getNextBusinessDay($fecha_pago);
+            // Si hay cuota inicial, la primera cuota se desplaza 7 días.
+            if ($this->cuota_inicial > 0) {
+                $fecha_pago->addDays(7);
+            }
         } elseif ($this->frecuencia_pago === 'quincenal') {
-            $fecha_pago->addDays(15);
-            $fecha_pago = $this->getNextBusinessDay($fecha_pago);
-        } else {
-            // Mensual: la siguiente cuota va al próximo mes y cae en dia_pago_mensual (ajustado).
-            $fecha_pago->addMonth();
+            // Para quincenal, la primera cuota es siempre en la fecha de inicio.
+            // No se modifica la fecha_pago aquí.
+        } elseif ($this->frecuencia_pago === 'mensual') {
+            // Si hay cuota inicial, la primera cuota es el mes siguiente.
+            if ($this->cuota_inicial > 0) {
+                $fecha_pago->addMonth();
+            }
+            // Si la fecha de inicio es posterior al día de pago, y no hay cuota inicial,
+            // la primera cuota debe ser en el mes siguiente.
+            elseif (Carbon::parse($this->fecha_inicio)->day > $this->dia_pago_mensual) {
+                $fecha_pago->addMonth();
+            }
+            
+            // Se ajusta al día de pago del mes correspondiente.
             try {
                 $fecha_pago->day = $this->dia_pago_mensual;
             } catch (\Exception $e) {
@@ -278,23 +276,17 @@ class Create extends Component
             }
         }
 
+        // Al final, se ajusta la fecha calculada para que sea un día hábil.
+        $fecha_pago = $this->getNextBusinessDay($fecha_pago);
+
 
 
         $saldo = $this->monto_financiado;
         $capital_por_cuota = $this->monto_financiado / $numCuotas;
         
-        // Calcular interés por cuota basado en la frecuencia de pago
-        if ($this->frecuencia_pago === 'quincenal') {
-            // Para quincenal, usar la cuota semanal como base y duplicarla
-            $cuotaSemanal = $this->monto_financiado / $this->plazo_semanas + ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / 52;
-            // La cuota quincenal es el doble de la cuota semanal
-            $cuotaQuincenal = $cuotaSemanal * 2;
-            // Desglosar la cuota quincenal en capital e interés
-            $capital_por_cuota = $this->monto_financiado / $numCuotas;
-            $interes_por_cuota = $cuotaQuincenal - $capital_por_cuota;
-        } else {
-            $interes_por_cuota = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / $periodsPerYear;
-        }
+        // Se calcula el interés por cuota de forma unificada para todas las frecuencias.
+        // Si la tasa de interés es 0, el resultado será 0.
+        $interes_por_cuota = ($this->monto_financiado * ($this->tasa_interes_anual / 100)) / $periodsPerYear;
 
         if ($this->cuota_inicial > 0) {
             $plan[] = [
