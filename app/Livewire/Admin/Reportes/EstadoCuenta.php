@@ -9,9 +9,10 @@ use App\Models\Contrato;
 use App\Models\PlanPago;
 use App\Models\Pago;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use App\Services\Audit\AuditService;
-use App\Services\Notification\NotificationService;
 use App\Services\Export\ExportImportService;
+use App\Services\WhatsAppService;
 use Maatwebsite\Excel\Facades\Excel;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -21,6 +22,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use Carbon\Carbon;
+use Dompdf\Dompdf;
 
 class EstadoCuenta extends Component
 {
@@ -225,26 +227,103 @@ class EstadoCuenta extends Component
 
     public function sendReminders()
     {
-        $notification = app(NotificationService::class);
+        $cliente = Cliente::find($this->cliente_id);
         $pendientes = $this->result['cuotas_pendientes'];
+        
+        if (empty($pendientes)) {
+            session()->flash('message', 'No hay cuotas pendientes para enviar recordatorios.');
+            return;
+        }
+
+        // Generate PDF with pending payments
+        $html = view('livewire.admin.reportes.estado-cuenta-pdf', [
+            'cliente' => $cliente,
+            'result' => $this->result,
+            'generatedAt' => now()->format('d/m/Y H:i')
+        ])->render();
+        
+        $dompdf = new Dompdf();
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        $pdf = $dompdf->output();
+        
+        // Create temporary PDF file
+        $tempPdfPath = storage_path('app/temp/estado_cuenta_' . $cliente->id . '_' . now()->format('Ymd_His') . '.pdf');
+        $directory = dirname($tempPdfPath);
+        if (!file_exists($directory)) {
+            mkdir($directory, 0755, true);
+        }
+        file_put_contents($tempPdfPath, $pdf);
+        
+        // Calculate total pending amount
+        $totalPendiente = array_sum(array_column($pendientes, 'saldo'));
+        
         foreach ($pendientes as $c) {
             $message = "Recordatorio: Cuota #{$c['numero']} vence el {$c['vencimiento']}. Saldo: $" . number_format($c['saldo'], 2);
             try {
-                $notification->enqueue('mail', [
-                    'to' => Auth::user()->email,
-                    'subject' => 'Recordatorio de Cuota Pendiente',
-                    'body' => $message
-                ], 'high');
-                $notification->enqueue('sms', [
-                    'to' => Auth::user()->phone ?? '',
-                    'text' => $message
-                ], 'high');
+                // Send WhatsApp message with PDF attachment if client has phone number
+                if (!empty($cliente->telefono)) {
+                    $whatsappService = app(WhatsAppService::class);
+                    
+                    // Format phone number properly before sending
+                    $formattedPhone = $whatsappService->formatPhone($cliente->telefono);
+                    
+                    // Prepare WhatsApp message
+                    $whatsAppMessage = "Hola {$cliente->nombre} {$cliente->apellido},\n\n"
+                                     . "Este es un recordatorio de sus cuotas pendientes.\n\n"
+                                     . "Total saldo pendiente: $" . number_format($totalPendiente, 2) . "\n\n"
+                                     . "Adjunto encontrará su estado de cuenta detallado.";
+                    
+                    // Send document (PDF) via WhatsApp
+                    $whatsappResult = $whatsappService->sendDocument(
+                        $formattedPhone, // Use formatted phone number
+                        $tempPdfPath,
+                        $whatsAppMessage
+                    );
+                    
+                    if ($whatsappResult && isset($whatsappResult['success']) && $whatsappResult['success']) {
+                        \Log::info('WhatsApp document sent successfully', [
+                            'cliente_id' => $cliente->id,
+                            'telefono_original' => $cliente->telefono,
+                            'telefono_formateado' => $formattedPhone,
+                            'pdf_path' => $tempPdfPath
+                        ]);
+                    } else {
+                        \Log::error('Error sending WhatsApp document', [
+                            'cliente_id' => $cliente->id,
+                            'telefono_original' => $cliente->telefono,
+                            'telefono_formateado' => $formattedPhone,
+                            'result' => $whatsappResult
+                        ]);
+                        
+                        // As fallback, try sending just the text message
+                        $whatsappTextResult = $whatsappService->send(
+                            $formattedPhone, // Use formatted phone number
+                            $whatsAppMessage
+                        );
+                        
+                        if ($whatsappTextResult && isset($whatsappTextResult['success']) && $whatsappTextResult['success']) {
+                            \Log::info('WhatsApp text message sent as fallback', [
+                                'cliente_id' => $cliente->id,
+                                'telefono_original' => $cliente->telefono,
+                                'telefono_formateado' => $formattedPhone
+                            ]);
+                        }
+                    }
+                }
             } catch (\Exception $e) {
                 app(AuditService::class)->logUserAction('notification.error', ['error' => $e->getMessage()], 'Error al enviar recordatorio');
             }
         }
+        
+        // Clean up temporary file
+        if (file_exists($tempPdfPath)) {
+            unlink($tempPdfPath);
+        }
+        
         app(AuditService::class)->logUserAction('report.account_status.reminders', ['count' => count($pendientes)], 'Se enviaron recordatorios de cuotas');
-        session()->flash('message', 'Recordatorios encolados correctamente.');
+        session()->flash('message', 'Recordatorios enviados correctamente por WhatsApp.');
     }
 
     public function render()

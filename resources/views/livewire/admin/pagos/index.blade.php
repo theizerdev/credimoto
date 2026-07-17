@@ -214,6 +214,10 @@
                                         <i class="ri ri-checkbox-circle-line me-1"></i> 
                                         {{ $pago->estado === 'aprobado' ? 'Marcar Pendiente' : 'Aprobar Pago' }}
                                     </button>
+                                    <button class="dropdown-item" wire:click="enviarReciboWhatsApp({{ $pago }})">
+                                        <i class="ri ri-whatsapp-line me-1"></i> 
+                                        Enviar Recibo por WhatsApp
+                                    </button>
                                     @endcan
                                 </div>
                             </div>

@@ -710,6 +710,86 @@ class Index extends Component
         $pdf->Cell(80, 5, 'Firma y Sello', 0, 1, 'C');
     }
 
+
+     public function enviarReciboWhatsApp(Pago $pago)
+    {
+        $cliente = $pago->cliente;
+        
+        if (!$cliente || !$cliente->telefono) {
+            return false;
+        }
+
+        $numero = $this->formatPhoneNumber($cliente->telefono);
+        $mensaje = $this->generarMensajeWhatsApp($pago);
+
+        // Usar WhatsAppService en lugar de Http directo para mayor robustez y compatibilidad
+        try {
+            $whatsappService = new \App\Services\WhatsAppService(auth()->user()->empresa_id);
+            $response = $whatsappService->sendMessage($numero, $mensaje, true);
+
+            if ($response && ($response['success'] ?? false)) {
+                return true;
+            }
+
+            \Log::error('Error WhatsApp Service Response: ' . json_encode($response));
+            return false;
+        } catch (\Exception $e) {
+             \Log::error('Error enviando WhatsApp (Exception): ' . $e->getMessage());
+             return false;
+        }
+    }
+
+
+    private function generarMensajeWhatsApp($pago)
+    {
+        $cliente = $pago->cliente;
+        $totalFormateado = '$' . number_format($pago->total, 2, ',', '.');
+
+        $mensaje = "💳 *Pago Recibido - Inversiones Danger 3000 C.A*\n\n";
+        $mensaje .= "Estimado/a *{$cliente->nombre_completo}*,\n\n";
+        $mensaje .= "Hemos recibido su pago correctamente.\n\n";
+
+        $mensaje .= "📄 *Detalles del Pago:*\n";
+        $mensaje .= "• Número de Recibo: *{$pago->numero_completo}*\n";
+        $mensaje .= "• Fecha: {$pago->fecha->format('d/m/Y')}\n";
+        $mensaje .= "• Método: " . ucfirst(str_replace('_', ' ', $pago->metodo_pago)) . "\n";
+        if ($pago->referencia) {
+            $mensaje .= "• Referencia: {$pago->referencia}\n";
+        }
+
+        $mensaje .= "\n📋 *Conceptos Pagados:*\n";
+        foreach ($pago->detalles as $detalle) {
+            $montoDetalle = '$' . number_format($detalle->precio_unitario * $detalle->cantidad, 2, ',', '.');
+            $mensaje .= "• {$detalle->descripcion}: {$montoDetalle}\n";
+        }
+
+        $mensaje .= "\n💰 *Total Pagado: {$totalFormateado}*\n\n";
+        $mensaje .= "Gracias por su pago puntual.\n\n";
+        $mensaje .= "*Inversiones Danger 3000 C.A - Tu aliado en dos ruedas*";
+
+        return $mensaje;
+    }
+
+    
+    private function formatPhoneNumber($number)
+    {
+        $empresa = \DB::table('empresas')->where('id', 1)->first();
+        $pais = $empresa ? \DB::table('pais')->where('id', $empresa->pais_id)->first() : null;
+        $codigoPais = $pais ? $pais->codigo_telefonico : '58';
+
+        $cleaned = preg_replace('/[^0-9]/', '', $number);
+
+        if (strlen($cleaned) > 10 && str_starts_with($cleaned, $codigoPais)) {
+            return $cleaned;
+        }
+
+        if (str_starts_with($cleaned, '0')) {
+            $cleaned = substr($cleaned, 1);
+        }
+
+        return $codigoPais . $cleaned;
+    }
+
     public function closePreview()
     {
         $this->showPreview = false;

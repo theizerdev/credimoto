@@ -459,12 +459,13 @@ class Create extends Component
         }
 
         $numero = $this->formatPhoneNumber($cliente->telefono);
+       
         $mensaje = $this->generarMensajeWhatsApp($pago);
 
         // Usar WhatsAppService en lugar de Http directo para mayor robustez y compatibilidad
         try {
             $whatsappService = new \App\Services\WhatsAppService(auth()->user()->empresa_id);
-            $response = $whatsappService->sendMessage($numero, $mensaje);
+            $response = $whatsappService->sendMessage($numero, $mensaje, true);
 
             if ($response && ($response['success'] ?? false)) {
                 return true;
@@ -508,19 +509,25 @@ class Create extends Component
         return $mensaje;
     }
 
-    private function formatPhoneNumber($number)
+     private function formatPhoneNumber($number)
     {
-        try {
-            $service = \App\Services\WhatsAppService::forCompany(auth()->user()->empresa_id);
-            return $service->formatPhone($number);
-        } catch (\Throwable $e) {
-            $cleaned = preg_replace('/[^0-9]/', '', $number);
-            if (strlen($cleaned) === 10) {
-                return '58' . ltrim($cleaned, '0');
-            }
-            return ltrim($cleaned, '+');
+        $empresa = \DB::table('empresas')->where('id', 1)->first();
+        $pais = $empresa ? \DB::table('pais')->where('id', $empresa->pais_id)->first() : null;
+        $codigoPais = $pais ? $pais->codigo_telefonico : '58';
+
+        $cleaned = preg_replace('/[^0-9]/', '', $number);
+
+        if (strlen($cleaned) > 10 && str_starts_with($cleaned, $codigoPais)) {
+            return $cleaned;
         }
+
+        if (str_starts_with($cleaned, '0')) {
+            $cleaned = substr($cleaned, 1);
+        }
+
+        return $codigoPais . $cleaned;
     }
+
 
     public function checkWhatsAppStatus()
     {
