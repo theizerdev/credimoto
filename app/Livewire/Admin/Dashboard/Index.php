@@ -113,6 +113,25 @@ class Index extends Component
         $this->dispatch('trendUpdated', labels: $labels, values: $values);
     }
 
+     private function formatPhoneNumber($number)
+    {
+        $empresa = \DB::table('empresas')->where('id', 1)->first();
+        $pais = $empresa ? \DB::table('pais')->where('id', $empresa->pais_id)->first() : null;
+        $codigoPais =  '58';
+
+        $cleaned = preg_replace('/[^0-9]/', '', $number);
+
+        if (strlen($cleaned) > 10 && str_starts_with($cleaned, $codigoPais)) {
+            return $cleaned;
+        }
+
+        if (str_starts_with($cleaned, '0')) {
+            $cleaned = substr($cleaned, 1);
+        }
+
+        return $codigoPais . $cleaned;
+    }
+
     public function notifyWhatsApp()
     {
         $empresaId = Auth::user()->empresa_id;
@@ -120,7 +139,8 @@ class Index extends Component
         foreach ($this->selectedClients as $clienteId) {
             $cliente = Cliente::find($clienteId);
             if (!$cliente) continue;
-            $phone = $cliente->telefono ?? $cliente->telefono_alternativo;
+            $phone = $this->formatPhoneNumber($cliente->telefono);
+          
             if (!$phone) continue;
             $pendientes = PlanPago::whereHas('contrato', function ($q) use ($cliente) {
                 $q->where('cliente_id', $cliente->id);
@@ -131,7 +151,7 @@ class Index extends Component
                 $msg .= "Cuota #{$p->numero_cuota} vence el " . optional($p->fecha_vencimiento)->format('d/m/Y') . " • Saldo: $" . number_format($p->saldo_pendiente, 2) . "\n";
             }
             $msg .= "\nPara más detalles, comuníquese con administración.";
-            $service->sendMessage($phone, $msg);
+            $service->sendMessage($phone, $msg,true);
         }
         app(AuditService::class)->logUserAction('dashboard.notify.whatsapp', [
             'clients' => $this->selectedClients,

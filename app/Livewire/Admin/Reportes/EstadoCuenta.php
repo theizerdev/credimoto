@@ -228,103 +228,82 @@ class EstadoCuenta extends Component
     public function sendReminders()
     {
         $cliente = Cliente::find($this->cliente_id);
-        $pendientes = $this->result['cuotas_pendientes'];
-        
-        if (empty($pendientes)) {
+        $pendientes = collect($this->result['cuotas_pendientes']);
+
+        if ($pendientes->isEmpty()) {
             session()->flash('message', 'No hay cuotas pendientes para enviar recordatorios.');
             return;
         }
 
-        // Generate PDF with pending payments
-        $html = view('livewire.admin.reportes.estado-cuenta-pdf', [
-            'cliente' => $cliente,
-            'result' => $this->result,
-            'generatedAt' => now()->format('d/m/Y H:i')
-        ])->render();
-        
-        $dompdf = new Dompdf();
-        $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-        $pdf = $dompdf->output();
-        
-        // Create temporary PDF file
-        $tempPdfPath = storage_path('app/temp/estado_cuenta_' . $cliente->id . '_' . now()->format('Ymd_His') . '.pdf');
-        $directory = dirname($tempPdfPath);
-        if (!file_exists($directory)) {
-            mkdir($directory, 0755, true);
+        // Encontrar la última cuota vencida
+        $ultimaCuotaVencida = $pendientes->whereIn('estado', 'pendiente')
+       
+        ->first();
+    //dd($ultimaCuotaVencida);
+        if (!$ultimaCuotaVencida) {
+            session()->flash('message', 'No hay cuotas vencidas para enviar recordatorio.');
+            return;
         }
-        file_put_contents($tempPdfPath, $pdf);
-        
-        // Calculate total pending amount
-        $totalPendiente = array_sum(array_column($pendientes, 'saldo'));
-        
-        foreach ($pendientes as $c) {
-            $message = "Recordatorio: Cuota #{$c['numero']} vence el {$c['vencimiento']}. Saldo: $" . number_format($c['saldo'], 2);
-            try {
-                // Send WhatsApp message with PDF attachment if client has phone number
-                if (!empty($cliente->telefono)) {
-                    $whatsappService = app(WhatsAppService::class);
-                    
-                    // Format phone number properly before sending
-                    $formattedPhone = $whatsappService->formatPhone($cliente->telefono);
-                    
-                    // Prepare WhatsApp message
-                    $whatsAppMessage = "Hola {$cliente->nombre} {$cliente->apellido},\n\n"
-                                     . "Este es un recordatorio de sus cuotas pendientes.\n\n"
-                                     . "Total saldo pendiente: $" . number_format($totalPendiente, 2) . "\n\n"
-                                     . "Adjunto encontrará su estado de cuenta detallado.";
-                    
-                    // Send document (PDF) via WhatsApp
-                    $whatsappResult = $whatsappService->sendDocument(
-                        $formattedPhone, // Use formatted phone number
-                        $tempPdfPath,
-                        $whatsAppMessage
-                    );
-                    
-                    if ($whatsappResult && isset($whatsappResult['success']) && $whatsappResult['success']) {
-                        \Log::info('WhatsApp document sent successfully', [
-                            'cliente_id' => $cliente->id,
-                            'telefono_original' => $cliente->telefono,
-                            'telefono_formateado' => $formattedPhone,
-                            'pdf_path' => $tempPdfPath
-                        ]);
-                    } else {
-                        \Log::error('Error sending WhatsApp document', [
-                            'cliente_id' => $cliente->id,
-                            'telefono_original' => $cliente->telefono,
-                            'telefono_formateado' => $formattedPhone,
-                            'result' => $whatsappResult
-                        ]);
-                        
-                        // As fallback, try sending just the text message
-                        $whatsappTextResult = $whatsappService->send(
-                            $formattedPhone, // Use formatted phone number
-                            $whatsAppMessage
-                        );
-                        
-                        if ($whatsappTextResult && isset($whatsappTextResult['success']) && $whatsappTextResult['success']) {
-                            \Log::info('WhatsApp text message sent as fallback', [
-                                'cliente_id' => $cliente->id,
-                                'telefono_original' => $cliente->telefono,
-                                'telefono_formateado' => $formattedPhone
-                            ]);
-                        }
-                    }
+
+        try {
+            if (!empty($cliente->telefono)) {
+                $whatsappService = app(WhatsAppService::class);
+                $formattedPhone = $this->formatPhoneNumber($cliente->telefono);
+
+                $message = "Hola {$cliente->nombre} {$cliente->apellido},\n\n"
+                         . "Le recordamos que tiene una cuota vencida.\n\n"
+                         . "Cuota #: {$ultimaCuotaVencida['numero']}\n"
+                         . "Fecha de Vencimiento: {$ultimaCuotaVencida['vencimiento']}\n"
+                         . "Saldo Pendiente: $" . number_format($ultimaCuotaVencida['saldo'], 2) . "\n\n"
+                         . "Por favor, realice su pago a la brevedad posible.";
+
+                $whatsappResult = $whatsappService->sendMessage(
+                    $formattedPhone,
+                    $message,
+                    true
+                );
+
+                if ($whatsappResult && isset($whatsappResult['success']) && $whatsappResult['success']) {
+                    \Log::info('WhatsApp reminder sent successfully', [
+                        'cliente_id' => $cliente->id,
+                        'telefono' => $formattedPhone,
+                    ]);
+                    session()->flash('message', 'Recordatorio enviado correctamente por WhatsApp.');
+                } else {
+                    \Log::error('Failed to send WhatsApp reminder', [
+                        'cliente_id' => $cliente->id,
+                        'telefono' => $formattedPhone,
+                        'response' => $whatsappResult
+                    ]);
+                    session()->flash('error', 'No se pudo enviar el recordatorio por WhatsApp.');
                 }
-            } catch (\Exception $e) {
-                app(AuditService::class)->logUserAction('notification.error', ['error' => $e->getMessage()], 'Error al enviar recordatorio');
             }
+        } catch (\Exception $e) {
+            \Log::error('Error sending WhatsApp reminder: ' . $e->getMessage());
+            session()->flash('error', 'Ocurrió un error al enviar el recordatorio.');
         }
-        
-        // Clean up temporary file
-        if (file_exists($tempPdfPath)) {
-            unlink($tempPdfPath);
-        }
-        
-        app(AuditService::class)->logUserAction('report.account_status.reminders', ['count' => count($pendientes)], 'Se enviaron recordatorios de cuotas');
-        session()->flash('message', 'Recordatorios enviados correctamente por WhatsApp.');
+
+        app(AuditService::class)->logUserAction('report.account_status.reminders', ['count' => 1], 'Se envió recordatorio de cuota vencida');
     }
+    private function formatPhoneNumber($number)
+    {
+        $empresa = \DB::table('empresas')->where('id', 1)->first();
+        $pais = $empresa ? \DB::table('pais')->where('id', $empresa->pais_id)->first() : null;
+        $codigoPais =  '58';
+
+        $cleaned = preg_replace('/[^0-9]/', '', $number);
+
+        if (strlen($cleaned) > 10 && str_starts_with($cleaned, $codigoPais)) {
+            return $cleaned;
+        }
+
+        if (str_starts_with($cleaned, '0')) {
+            $cleaned = substr($cleaned, 1);
+        }
+
+        return $codigoPais . $cleaned;
+    }
+
 
     public function render()
     {

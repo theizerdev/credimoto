@@ -40,7 +40,7 @@ return [
             'driver' => 'mysql',
             'host' => '166.1.85.56',
             'port' => '3306',
-            'database' => 'credimoto',
+            'database' => 'lostrinis',
             'username' => 'root',
             'password' => 'AdaThei04112023*',
             'charset' => 'utf8mb4',
