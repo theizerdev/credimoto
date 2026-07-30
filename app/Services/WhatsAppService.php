@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Empresa;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -12,9 +11,7 @@ class WhatsAppService
 {
     private $baseUrl;
 
-
     private $apiKey;
-
 
     private $companyId;
 
@@ -29,23 +26,13 @@ class WhatsAppService
         return $this;
     }
 
-    public function setTimeout(int $seconds): self
-    {
-        $this->timeout = $seconds;
-
-        return $this;
-    }
-
     /**
      * Constructor del servicio WhatsApp
      *
-     * @param  Empresa|int|null  $empresa  - Empresa, ID de empresa, o null para usar la del usuario actual
-     *
-     * @param  Empresa|int|null  $empresa  - Empresa, ID de empresa, o null para usar la del usuario actual
+     * @param Empresa|int|array|null $empresa - Empresa, ID de empresa, array de credenciales, o null para usar la del usuario actual
      */
     public function __construct($empresa = null)
     {
-        $this->baseUrl = config('whatsapp.api_url', 'http://82.165.213.124:8092');
         $this->baseUrl = config('whatsapp.api_url', 'http://82.165.213.124:8092');
         $this->timeout = config('whatsapp.timeout', 30);
 
@@ -88,16 +75,6 @@ class WhatsAppService
                     $this->baseUrl = rtrim($empresaModel->whatsapp_api_url, '/');
                 }
             }
-
-            // Consultar MessagingConnection si aun no hay instancia
-            if (! $this->instanceName) {
-                $connection = MessagingConnection::forEmpresa($this->companyId)
-                    ->whereHas('provider', fn($q) => $q->where('slug', 'whatsapp_lite'))
-                    ->first();
-                if ($connection && ! empty($connection->credentials['instance'])) {
-                    $this->instanceName = $connection->credentials['instance'];
-                }
-            }
         }
 
         if (! $this->apiKey) {
@@ -114,8 +91,6 @@ class WhatsAppService
      */
     private function resolveCompany($empresa = null): void
     {
-        $empresaModel = null;
-
         $empresaModel = null;
 
         if ($empresa instanceof Empresa) {
@@ -239,7 +214,6 @@ class WhatsAppService
                 'instance' => $this->instanceName,
             ]);
 
-
             return null;
         }
     }
@@ -260,7 +234,6 @@ class WhatsAppService
     /**
      * Enviar mensaje de texto
      */
-    public function sendMessage(string $to, string $message, bool $isWelcome = false)
     public function sendMessage(string $to, string $message, bool $isWelcome = false)
     {
         try {
@@ -293,7 +266,6 @@ class WhatsAppService
             }
         } catch (\Exception $e) {
             Log::error('WhatsApp Send Message Error: '.$e->getMessage(), [
-            Log::error('WhatsApp Send Message Error: '.$e->getMessage(), [
                 'company_id' => $this->companyId,
                 'instance' => $this->instanceName,
                 'to' => $to,
@@ -325,7 +297,6 @@ class WhatsAppService
                 'instance' => $this->instanceName,
                 'to' => $to,
             ]);
-
 
             return null;
         }
@@ -371,7 +342,6 @@ class WhatsAppService
                 'instance' => $this->instanceName,
             ]);
 
-
             return null;
         }
     }
@@ -394,7 +364,6 @@ class WhatsAppService
                 'instance' => $this->instanceName,
             ]);
 
-
             return null;
         }
     }
@@ -411,7 +380,6 @@ class WhatsAppService
 
     public function isConfigured(): bool
     {
-        return ! empty($this->apiKey) && ! empty($this->companyId);
         return ! empty($this->apiKey) && ! empty($this->companyId);
     }
 }
