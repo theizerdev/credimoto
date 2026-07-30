@@ -254,28 +254,25 @@
 
 
    
-    @can('access whatsapp')
-      <li class="menu-item {{ request()->routeIs('admin.whatsapp.*') ? 'active open' : '' }}">
-        <a href="javascript:void(0);" class="menu-link menu-toggle">
-          <i class="menu-icon tf-icons ri ri-whatsapp-line"></i>
-          <div>WhatsApp</div>
-        </a>
-        <ul class="menu-sub">
-          <!-- WhatsApp 
-          <li class="menu-item {{ request()->routeIs('admin.whatsapp.chat') ? 'active' : '' }}">
-            <a href="{{ route('admin.whatsapp.chat') }}" class="menu-link">
-              <div>Chat</div>
-            </a>
-          </li>
-          -->
-          <li class="menu-item {{ request()->routeIs('admin.whatsapp.index') ? 'active' : '' }}">
-            <a href="{{ route('admin.whatsapp.index') }}" class="menu-link">
-              <div>Panel</div>
-            </a>
-          </li>
-        </ul>
-      </li>
-    @endcan
+ @can('access whatsapp')
+    <!-- WhatsApp -->
+    <li class="menu-item {{ request()->routeIs('admin.whatsapp.*') ? 'active open' : '' }}">
+      <a href="javascript:void(0);" class="menu-link menu-toggle">
+        <i class="menu-icon tf-icons ri ri-whatsapp-line"></i>
+        <div>WhatsApp</div>
+      </a>
+      <ul class="menu-sub">
+        @can('access whatsapp')
+        <li class="menu-item {{ request()->routeIs('admin.whatsapp.index') ? 'active' : '' }}">
+          <a href="{{ route('admin.whatsapp.index') }}" class="menu-link">
+            <div>Panel</div>
+          </a>
+        </li>
+        @endcan
+        
+      </ul>
+    </li>
+   @endcan
 
 
    @canany(['access users', 'access roles', 'access permissions'])

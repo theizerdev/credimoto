@@ -155,35 +155,10 @@ Route::get('/reglas-morosidad', \App\Livewire\Admin\LatePaymentRules\Index::clas
 // Notificaciones
 Route::get('/notifications', \App\Livewire\Admin\Notifications\Index::class)->name('notifications.index');
 
-// WhatsApp - Nuevas rutas separadas
+// WhatsApp
 Route::prefix('whatsapp')->as('whatsapp.')->group(function () {
-    // Dashboard principal
-    Route::get('/dashboard', \App\Livewire\Admin\Whatsapp\WhatsAppDashboard::class)->name('dashboard');
-    
-    // Gestión de conexión
-    Route::get('/connection', \App\Livewire\Admin\Whatsapp\WhatsAppConnection::class)->name('connection');
-    
-    // Enviar mensajes
-    Route::get('/send-messages', \App\Livewire\Admin\Whatsapp\WhatsAppSendMessages::class)->name('send-messages');
-    
-    // Plantillas
-    Route::get('/templates', \App\Livewire\Admin\Whatsapp\WhatsAppTemplates::class)->name('templates.index');
-    
-    // Historial
-    Route::get('/history', \App\Livewire\Admin\Whatsapp\WhatsAppHistory::class)->name('history');
-    
-    // Mensajes programados
-    Route::get('/scheduled-messages', \App\Livewire\Admin\Whatsapp\WhatsAppScheduledMessages::class)->name('scheduled-messages');
-    
-    // Mantener rutas antiguas para compatibilidad temporal
     Route::get('/', \App\Livewire\Admin\Whatsapp\Index::class)->name('index');
-    
-    // Estadísticas
-    Route::get('/statistics', \App\Livewire\Admin\Whatsapp\WhatsAppStatistics::class)->name('statistics');
-   
-    Route::get('/chat/{any?}', function () {
-        return view('admin.whatsapp.react-chat');
-    })->where('any', '.*')->name('chat');
+    Route::get('/dashboard', \App\Livewire\Admin\Whatsapp\Index::class)->name('dashboard');
 });
 
 // Exportador de Base de Datos

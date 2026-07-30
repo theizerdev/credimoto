@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Activitylog\LogOptions;
+use App\Traits\HasSpanishActivityLog;
 
 class Empresa extends Model
 {
-    use HasFactory, LogsActivity;
+    use HasFactory, LogsActivity, HasSpanishActivityLog;
 
     protected $fillable = [
         'razon_social',
@@ -25,11 +26,20 @@ class Empresa extends Model
         'api_key',
         // Campos para integración WhatsApp multi-empresa
         'whatsapp_api_key',
+        'whatsapp_api_url',
+        'whatsapp_instance',
         'whatsapp_rate_limit',
         'whatsapp_active',
         'whatsapp_phone',
         'whatsapp_status',
-        'whatsapp_last_connected'
+        'whatsapp_last_connected',
+        'rif_fiscal',
+        'direccion_fiscal',
+        'ciudad_fiscal',
+        'estado_fiscal',
+        'codigo_postal_fiscal',
+        'telefono_fiscal',
+        'correo_fiscal'
     ];
 
     protected $casts = [
@@ -70,10 +80,12 @@ class Empresa extends Model
         parent::boot();
         
         static::creating(function ($empresa) {
-            if (!$empresa->api_key) {
-                $empresa->api_key = self::generateApiKey();
+            if (!$empresa->whatsapp_api_key) {
+                $empresa->whatsapp_api_key = self::generateApiKey();
             }
+           
         });
+
     }
 
     public static function generateApiKey(): string
@@ -91,7 +103,8 @@ class Empresa extends Model
         return LogOptions::defaults()
             ->logOnly(['razon_social', 'documento', 'direccion', 'representante_legal', 'status'])
             ->logOnlyDirty()
-            ->dontSubmitEmptyLogs();
+            ->dontSubmitEmptyLogs()
+            ->setDescriptionForEvent(fn(string $eventName) => static::getSpanishDescription($eventName));
     }
 
     // ==================== Métodos WhatsApp ====================
@@ -145,5 +158,21 @@ class Empresa extends Model
         }
         
         $this->update($data);
+    }
+
+    public function getDireccionFiscalCompletaAttribute(): string
+    {
+        $parts = array_filter([
+            $this->direccion_fiscal,
+            $this->ciudad_fiscal,
+            $this->estado_fiscal,
+            $this->codigo_postal_fiscal ? 'C.P. ' . $this->codigo_postal_fiscal : null,
+        ]);
+        return implode(', ', $parts);
+    }
+
+    public function getNombreAttribute(): string
+    {
+        return $this->razon_social;
     }
 }
