@@ -49,6 +49,36 @@ class WhatsAppService
     }
 
     /**
+     * Formatea el número de teléfono eliminando caracteres no numéricos (como +)
+     * y asegurando el prefijo internacional (por defecto 58 para Venezuela).
+     */
+    public function formatPhone(?string $phone): string
+    {
+        if (empty($phone)) {
+            return '';
+        }
+
+        // Dejar solo números
+        $cleaned = preg_replace('/[^0-9]/', '', $phone);
+
+        if (empty($cleaned)) {
+            return '';
+        }
+
+        // Si empieza por 0 y tiene 11 dígitos (ej. 04241703465 -> 584241703465)
+        if (strlen($cleaned) === 11 && str_starts_with($cleaned, '0')) {
+            return '58' . substr($cleaned, 1);
+        }
+
+        // Si tiene 10 dígitos (ej. 4241703465 -> 584241703465)
+        if (strlen($cleaned) === 10) {
+            return '58' . $cleaned;
+        }
+
+        return $cleaned;
+    }
+
+    /**
      * Resuelve las credenciales provistas directamente
      */
     private function resolveCredentials(array $credentials): void
@@ -152,7 +182,7 @@ class WhatsAppService
 
     /**
      * Obtener el estado de la conexión WhatsApp
-     * Usa timeout reducido (10s) como Conexion.php
+     * Usa timeout reducido (10s)
      */
     public function getStatus()
     {
@@ -197,6 +227,7 @@ class WhatsAppService
                 'company_id' => $this->companyId,
                 'instance' => $this->instanceName,
                 'status' => $response->status(),
+                'body' => $response->body(),
             ]);
 
             return null;
@@ -237,29 +268,54 @@ class WhatsAppService
     public function sendMessage(string $to, string $message, bool $isWelcome = false)
     {
         try {
+            $formattedTo = $this->formatPhone($to);
+            if (empty($formattedTo)) {
+                Log::warning('WhatsApp Send Message Error: Número de destino inválido o vacío', [
+                    'company_id' => $this->companyId,
+                    'instance' => $this->instanceName,
+                    'original_to' => $to,
+                ]);
+                return null;
+            }
+
             $url = "{$this->baseUrl}/api/message/send-text/{$this->instanceName}";
             $response = Http::timeout($this->timeout)
                 ->withHeaders($this->getHeaders())
                 ->post($url, [
-                    'to' => $to,
+                    'to' => $formattedTo,
                     'message' => $message,
                 ]);
 
-            if ($response->successful()) {
-                Log::info('WhatsApp mensaje enviado', [
+            $responseData = $response->json();
+
+            // Verificar si el microservicio devolvió error lógico aunque el status HTTP sea 200
+            $hasApiError = false;
+            if (is_array($responseData)) {
+                if (isset($responseData['success']) && $responseData['success'] === false) {
+                    $hasApiError = true;
+                } elseif (isset($responseData['status']) && in_array(strtolower($responseData['status']), ['error', 'failed', 'close', 'disconnected'])) {
+                    $hasApiError = true;
+                } elseif (isset($responseData['error'])) {
+                    $hasApiError = true;
+                }
+            }
+
+            if ($response->successful() && !$hasApiError) {
+                Log::info('WhatsApp mensaje enviado exitosamente', [
                     'company_id' => $this->companyId,
                     'instance' => $this->instanceName,
-                    'to' => $to,
+                    'to' => $formattedTo,
+                    'response' => $responseData,
                 ]);
 
-                return $response->json();
+                return $responseData;
             } else {
                 Log::error('WhatsApp Send Message Failed', [
                     'company_id' => $this->companyId,
                     'instance' => $this->instanceName,
-                    'to' => $to,
+                    'to' => $formattedTo,
                     'status' => $response->status(),
-                    'body' => $response->body(),
+                    'response' => $responseData ?? $response->body(),
                 ]);
 
                 return null;
@@ -281,16 +337,51 @@ class WhatsAppService
     public function sendMedia(string $to, string $mediaUrl, string $caption = '')
     {
         try {
+            $formattedTo = $this->formatPhone($to);
+            if (empty($formattedTo)) {
+                Log::warning('WhatsApp Send Media Error: Número de destino inválido o vacío', [
+                    'company_id' => $this->companyId,
+                    'instance' => $this->instanceName,
+                    'original_to' => $to,
+                ]);
+                return null;
+            }
+
             $url = "{$this->baseUrl}/api/message/send-media/{$this->instanceName}";
             $response = Http::timeout($this->timeout)
                 ->withHeaders($this->getHeaders())
                 ->post($url, [
-                    'to' => $to,
+                    'to' => $formattedTo,
                     'url' => $mediaUrl,
                     'caption' => $caption,
                 ]);
 
-            return $response->successful() ? $response->json() : null;
+            $responseData = $response->json();
+
+            $hasApiError = false;
+            if (is_array($responseData)) {
+                if (isset($responseData['success']) && $responseData['success'] === false) {
+                    $hasApiError = true;
+                } elseif (isset($responseData['status']) && in_array(strtolower($responseData['status']), ['error', 'failed', 'close', 'disconnected'])) {
+                    $hasApiError = true;
+                } elseif (isset($responseData['error'])) {
+                    $hasApiError = true;
+                }
+            }
+
+            if ($response->successful() && !$hasApiError) {
+                return $responseData;
+            }
+
+            Log::error('WhatsApp Send Media Failed', [
+                'company_id' => $this->companyId,
+                'instance' => $this->instanceName,
+                'to' => $formattedTo,
+                'status' => $response->status(),
+                'response' => $responseData ?? $response->body(),
+            ]);
+
+            return null;
         } catch (\Exception $e) {
             Log::error('WhatsApp Send Media Error: '.$e->getMessage(), [
                 'company_id' => $this->companyId,
