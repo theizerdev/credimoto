@@ -71,6 +71,23 @@ class Index extends Component
         session()->flash('message', 'Contrato restaurado correctamente.');
     }
 
+    public function toggleContractStatus($id)
+    {
+        $contrato = Contrato::findOrFail($id);
+        
+        // Toggle between active/inactive states
+        // Only allow toggle between 'activo' and 'cancelado' for now
+        if ($contrato->estado === 'activo') {
+            $contrato->estado = 'cancelado';
+        } else {
+            $contrato->estado = 'activo';
+        }
+        
+        $contrato->save();
+        
+        session()->flash('message', 'Estado del contrato actualizado correctamente.');
+    }
+
     private function buildBaseQuery()
     {
         if ($this->showDeleted) {

@@ -252,9 +252,28 @@
                                             'reposicion' => 'bg-label-danger'
                                         ];
                                     @endphp
-                                    <span class="badge {{ $badges[$contrato->estado] ?? 'bg-label-primary' }}">
-                                        {{ ucfirst($contrato->estado) }}
-                                    </span>
+                                    
+                                    <!-- Toggle switch for active/inactive status -->
+                                    @if(in_array($contrato->estado, ['activo', 'cancelado']))
+                                        <div class="d-flex align-items-center">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" 
+                                                       type="checkbox" 
+                                                       id="statusToggle{{ $contrato->id }}"
+                                                       wire:loading.attr="disabled"
+                                                       @if($contrato->estado === 'activo') checked @endif
+                                                       wire:click="toggleContractStatus({{ $contrato->id }})"
+                                                       wire:confirm="¿Está seguro de que desea cambiar el estado de este contrato?">
+                                            </div>
+                                            <span class="badge ms-2 {{ $badges[$contrato->estado] ?? 'bg-label-primary' }}">
+                                                {{ ucfirst($contrato->estado) }}
+                                            </span>
+                                        </div>
+                                    @else
+                                        <span class="badge {{ $badges[$contrato->estado] ?? 'bg-label-primary' }}">
+                                            {{ ucfirst($contrato->estado) }}
+                                        </span>
+                                    @endif
                                 </td>
                                 @endunless
                                 <td>
