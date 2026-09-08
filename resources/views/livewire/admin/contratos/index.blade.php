@@ -136,7 +136,17 @@
                         </div>
 
                         @unless($showDeleted)
-                        <div class="col-md-3">
+                        <div class="col-md-2">
+                            <label class="form-label">Tipo de Contrato</label>
+                            <select class="form-select" wire:model.live="frecuencia_pago">
+                                <option value="">Todos los tipos</option>
+                                <option value="semanal">Semanal</option>
+                                <option value="quincenal">Quincenal</option>
+                                <option value="mensual">Mensual</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-2">
                             <label class="form-label">Estado</label>
                             <select class="form-select" wire:model.live="estado">
                                 <option value="">Todos los estados</option>
@@ -160,7 +170,7 @@
                         </div>
                         @endunless
 
-                        <div class="col-md-3 d-flex align-items-end gap-2">
+                        <div class="col-md-2 d-flex align-items-end gap-2">
                             <button type="button" class="btn btn-label-secondary" wire:click="clearFilters">
                                 <i class="ri ri-eraser-line"></i> Limpiar
                             </button>
@@ -210,8 +220,19 @@
                             @forelse($contratos as $contrato)
                             <tr>
                                 <td>
-                                    <span class="fw-bold text-primary">#{{ $contrato->numero_contrato }}</span>
-                                    <br>
+                                    <div class="d-flex align-items-center gap-1 flex-wrap">
+                                        <span class="fw-bold text-primary">#{{ $contrato->numero_contrato }}</span>
+                                        @php
+                                            $frecuenciaBadges = [
+                                                'semanal' => 'bg-label-primary',
+                                                'quincenal' => 'bg-label-info',
+                                                'mensual' => 'bg-label-warning'
+                                            ];
+                                        @endphp
+                                        <span class="badge {{ $frecuenciaBadges[$contrato->frecuencia_pago] ?? 'bg-label-secondary' }}" style="font-size: 0.72rem;">
+                                            {{ ucfirst($contrato->frecuencia_pago ?? 'mensual') }}
+                                        </span>
+                                    </div>
                                     <small class="text-muted">{{ $contrato->fecha_inicio->format('d/m/Y') }}</small>
                                 </td>
                                 <td>

@@ -16,6 +16,7 @@ class Index extends Component
     public $search = '';
     public $estado = '';
     public $empresa_id = '';
+    public $frecuencia_pago = '';
     public $sortBy = 'created_at';
     public $sortDirection = 'desc';
     public $perPage = 10;
@@ -25,6 +26,7 @@ class Index extends Component
         'search' => ['except' => ''],
         'estado' => ['except' => ''],
         'empresa_id' => ['except' => ''],
+        'frecuencia_pago' => ['except' => ''],
         'sortBy' => ['except' => 'created_at'],
         'sortDirection' => ['except' => 'desc'],
         'perPage' => ['except' => 10],
@@ -36,9 +38,24 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function updatingEstado()
+    {
+        $this->resetPage();
+    }
+
+    public function updatingEmpresaId()
+    {
+        $this->resetPage();
+    }
+
+    public function updatingFrecuenciaPago()
+    {
+        $this->resetPage();
+    }
+
     public function clearFilters()
     {
-        $this->reset(['search', 'estado', 'empresa_id', 'sortBy', 'sortDirection', 'perPage', 'showDeleted']);
+        $this->reset(['search', 'estado', 'empresa_id', 'frecuencia_pago', 'sortBy', 'sortDirection', 'perPage', 'showDeleted']);
     }
 
     public function sort($field)
@@ -106,6 +123,10 @@ class Index extends Component
             if ($this->empresa_id) {
                 $query->where('empresa_id', $this->empresa_id);
             }
+
+            if ($this->frecuencia_pago !== '') {
+                $query->where('frecuencia_pago', $this->frecuencia_pago);
+            }
         }
 
         if (auth()->check() && auth()->user()->cliente_id) {
@@ -146,6 +167,7 @@ class Index extends Component
             'Documento',
             'Moto',
             'Placa',
+            'Frecuencia',
             'Monto Financiado',
             'Saldo Pendiente',
             'Estado',
@@ -163,6 +185,7 @@ class Index extends Component
             $row->cliente->documento ?? 'N/A',
             $row->unidad->moto->titulo ?? 'N/A',
             $row->unidad->placa ?? 'S/P',
+            ucfirst($row->frecuencia_pago ?? 'mensual'),
             $row->monto_financiado,
             $row->saldo_pendiente,
             ucfirst($row->estado),

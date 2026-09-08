@@ -296,8 +296,10 @@ class Edit extends Component
                 $fecha_pago->addDays(7);
             }
         } elseif ($this->frecuencia_pago === 'quincenal') {
-            // Para quincenal, la primera cuota es siempre en la fecha de inicio.
-            // No se modifica la fecha_pago aquí.
+            // Si hay cuota inicial, la primera cuota se desplaza a la siguiente quincena (15 días).
+            if ($this->cuota_inicial > 0) {
+                $fecha_pago->addDays(15);
+            }
         } elseif ($this->frecuencia_pago === 'mensual') {
             // Si hay cuota inicial, la primera cuota es el mes siguiente.
             if ($this->cuota_inicial > 0) {
