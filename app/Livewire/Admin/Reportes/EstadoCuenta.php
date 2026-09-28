@@ -104,7 +104,7 @@ class EstadoCuenta extends Component
             ->groupBy('plan_pago_id');
         $cuotasPendientes = $planPagos->filter(fn($p) => in_array($p->estado, ['pendiente', 'parcial', 'vencido']));
 
-        $totalPagado = $pagos->where('estado', 'aprobado')->sum('total');
+        $totalPagado = $cuotasPagadas->where('estado', 'pagado')->sum('monto_capital');
         $pendiente = $planPagos->sum('saldo_pendiente');
         $proximo = $cuotasPendientes->where('estado', 'pendiente')->sortBy('fecha_vencimiento')->first();
         $hayVencidos = $cuotasPendientes->where('estado', 'vencido')->count() > 0;
