@@ -47,7 +47,11 @@
     @endif
 
     <div class="mt-2" style="background: #f1f5f9; padding: 6px 10px; border-radius: 4px;">
-        <strong>Total Pagado:</strong> ${{ number_format($result['resumen']['total_pagado'] ?? 0, 2) }} &nbsp;|&nbsp;
+        <strong>Total Pagado:</strong> ${{ number_format($result['resumen']['total_pagado'] ?? 0, 2) }}
+        @if(!empty($result['resumen']['total_pagado_bs']) && $result['resumen']['total_pagado_bs'] > 0)
+            <span style="color: #475569;">(Bs. {{ number_format($result['resumen']['total_pagado_bs'], 2) }})</span>
+        @endif
+        &nbsp;|&nbsp;
         <strong>Saldo Pendiente:</strong> ${{ number_format($result['resumen']['pendiente'] ?? 0, 2) }} &nbsp;|&nbsp;
         <strong>Próximo Vencimiento:</strong> {{ $result['resumen']['proximo_vencimiento'] ?? 'N/A' }} &nbsp;|&nbsp;
         <strong>Estado:</strong> 
@@ -96,25 +100,55 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 15%;">Contrato</th>
-                <th style="width: 45%;">Descripción</th>
-                <th style="width: 20%;">Fecha Pago</th>
-                <th style="width: 20%;" class="text-right">Monto</th>
+                <th style="width: 12%;">Contrato</th>
+                <th style="width: 30%;">Descripción</th>
+                <th style="width: 14%;">Fecha Pago</th>
+                <th style="width: 14%;" class="text-right">Tasa (Bs.)</th>
+                <th style="width: 15%;" class="text-right">Monto ($)</th>
+                <th style="width: 15%;" class="text-right">Monto (Bs.)</th>
             </tr>
         </thead>
         <tbody>
+            @php
+                $totUsd = 0;
+                $totBs = 0;
+            @endphp
             @forelse($result['cuotas_pagadas'] as $c)
+            @php
+                $mUsd = (float)($c['monto'] ?? 0);
+                $mBs = (float)($c['monto_bs'] ?? 0);
+                $totUsd += $mUsd;
+                $totBs += $mBs;
+            @endphp
             <tr>
                 <td>#{{ $c['numero_contrato'] ?? $c['contrato_id'] }}</td>
                 <td>{{ $c['descripcion'] }}</td>
-                <td>{{ $c['fecha_pago'] }}</td>
-                <td class="text-right">${{ number_format($c['monto'], 2) }}</td>
+                <td>{{ $c['fecha_pago'] ?: '-' }}</td>
+                <td class="text-right">{{ !empty($c['tasa_cambio']) ? number_format($c['tasa_cambio'], 2) : '-' }}</td>
+                <td class="text-right">${{ number_format($mUsd, 2) }}</td>
+                <td class="text-right">Bs. {{ number_format($mBs, 2) }}</td>
             </tr>
             @empty
-            <tr><td colspan="4" class="small text-center">Sin cuotas pagadas</td></tr>
+            <tr><td colspan="6" class="small text-center">Sin cuotas pagadas</td></tr>
             @endforelse
         </tbody>
+        @if(!empty($result['cuotas_pagadas']) && count($result['cuotas_pagadas']) > 0)
+        <tfoot>
+            <tr style="background: #f1f5f9; font-weight: bold;">
+                <td colspan="4" class="text-right"><strong>TOTAL PAGADO:</strong></td>
+                <td class="text-right"><strong>${{ number_format($totUsd, 2) }}</strong></td>
+                <td class="text-right"><strong>Bs. {{ number_format($totBs, 2) }}</strong></td>
+            </tr>
+        </tfoot>
+        @endif
     </table>
+
+    @if(!empty($result['cuotas_pagadas']) && count($result['cuotas_pagadas']) > 0)
+    <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 10px; margin-top: 4px; text-align: right; font-size: 10px;">
+        <span style="margin-right: 18px;"><strong>Sumatoria Total en Divisa:</strong> <span style="color: #15803d; font-weight: bold; font-size: 11px;">${{ number_format($totUsd, 2) }}</span></span>
+        <span><strong>Sumatoria Total en Bolívares:</strong> <span style="color: #1e40af; font-weight: bold; font-size: 11px;">Bs. {{ number_format($totBs, 2) }}</span></span>
+    </div>
+    @endif
 
     <h3 class="mt-2">Cuotas Pendientes</h3>
     <table>

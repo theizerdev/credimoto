@@ -8,6 +8,8 @@ use App\Models\Cliente;
 use App\Models\Contrato;
 use App\Models\PlanPago;
 use App\Models\Pago;
+use App\Models\PagoDetalle;
+use App\Models\ExchangeRate;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use App\Services\Audit\AuditService;
@@ -136,18 +138,83 @@ class EstadoCuenta extends Component
         $pagos = $pagosQuery->orderBy('fecha', 'desc')->get();
 
         $cuotasPagadas = $planPagos->where('estado', 'pagado');
-        $detallesPorPlan = \App\Models\PagoDetalle::with('conceptoPago')
+        $detallesPorPlan = PagoDetalle::with(['conceptoPago', 'pago'])
             ->whereIn('plan_pago_id', $cuotasPagadas->pluck('id'))
             ->get()
             ->groupBy('plan_pago_id');
         $cuotasPendientes = $planPagos->filter(fn($p) => in_array($p->estado, ['pendiente', 'parcial', 'vencido']));
 
+        $fallbackGeneralRate = (float)(ExchangeRate::orderBy('date', 'desc')->value('usd_rate') ?? 1);
+
+        $cuotasPagadasMapped = $cuotasPagadas->map(function($c) use ($detallesPorPlan, $fallbackGeneralRate) {
+            $detalles = $detallesPorPlan->get($c->id) ?? collect();
+            $detalle = $detalles->first();
+            $pago = $detalle?->pago;
+
+            // Determine fecha de pago
+            $fechaPago = $c->fecha_pago_real 
+                ? Carbon::parse($c->fecha_pago_real) 
+                : ($pago?->fecha ? Carbon::parse($pago->fecha) : ($c->fecha_vencimiento ? Carbon::parse($c->fecha_vencimiento) : null));
+
+            $montoUsd = (float) $c->monto_total;
+            $montoBs = 0;
+            $tasa = 0;
+
+            if ($detalles->isNotEmpty()) {
+                foreach ($detalles as $dt) {
+                    $dtPago = $dt->pago;
+                    $dtTasa = (float)($dtPago?->tasa_cambio ?: 0);
+                    if ($dtTasa <= 0 && $dtPago?->fecha) {
+                        $dtTasa = (float)(ExchangeRate::whereDate('date', $dtPago->fecha)->value('usd_rate')
+                            ?: ExchangeRate::whereDate('date', '<=', $dtPago->fecha)->orderBy('date', 'desc')->value('usd_rate')
+                            ?: 0);
+                    }
+                    if ($dtTasa <= 0 && $c->fecha_pago_real) {
+                        $dtTasa = (float)(ExchangeRate::whereDate('date', $c->fecha_pago_real)->value('usd_rate')
+                            ?: ExchangeRate::whereDate('date', '<=', $c->fecha_pago_real)->orderBy('date', 'desc')->value('usd_rate')
+                            ?: 0);
+                    }
+                    if ($dtTasa <= 0) {
+                        $dtTasa = $fallbackGeneralRate;
+                    }
+                    $montoBs += round(((float)$dt->subtotal) * $dtTasa, 2);
+                    $tasa = $dtTasa;
+                }
+            } else {
+                $tasaDate = $fechaPago ?: now();
+                $tasa = (float)(ExchangeRate::whereDate('date', $tasaDate)->value('usd_rate')
+                    ?: ExchangeRate::whereDate('date', '<=', $tasaDate)->orderBy('date', 'desc')->value('usd_rate')
+                    ?: $fallbackGeneralRate);
+                $montoBs = round($montoUsd * $tasa, 2);
+            }
+
+            return [
+                'id' => $c->id,
+                'contrato_id' => $c->contrato_id,
+                'numero_contrato' => $c->contrato?->numero_contrato ?? $c->contrato_id,
+                'numero' => $c->numero_cuota,
+                'descripcion' => $detalle?->descripcion ?? ($detalle?->conceptoPago?->nombre ?? ($c->numero_cuota === 0 ? 'Cuota Inicial' : "Cuota #{$c->numero_cuota}")),
+                'fecha_pago' => $fechaPago ? $fechaPago->format('d/m/Y') : '',
+                'tasa_cambio' => $tasa,
+                'monto' => $montoUsd,
+                'monto_bs' => $montoBs,
+            ];
+        })->values();
+
+        $totalCuotasPagadasUsd = (float) $cuotasPagadasMapped->sum('monto');
+        $totalCuotasPagadasBs = (float) $cuotasPagadasMapped->sum('monto_bs');
+
         if ($this->selected_contrato_id) {
-            $totalPagado = \App\Models\PagoDetalle::whereHas('pago', fn($q) => $q->where('estado', 'aprobado'))
+            $totalPagado = (float) PagoDetalle::whereHas('pago', fn($q) => $q->where('estado', 'aprobado'))
                 ->whereHas('planPago', fn($q) => $q->where('contrato_id', $this->selected_contrato_id))
                 ->sum('subtotal');
+            $totalPagadoBs = $totalCuotasPagadasBs;
         } else {
-            $totalPagado = $pagos->where('estado', 'aprobado')->sum('total');
+            $totalPagado = (float) $pagos->where('estado', 'aprobado')->sum('total');
+            $totalPagadoBs = (float) $pagos->where('estado', 'aprobado')->sum('total_bolivares');
+            if ($totalPagadoBs <= 0) {
+                $totalPagadoBs = $totalCuotasPagadasBs;
+            }
         }
 
         $pendiente = $planPagos->sum('saldo_pendiente');
@@ -161,7 +228,7 @@ class EstadoCuenta extends Component
             foreach ($pagos->groupBy(fn($p) => optional($p->fecha)->format('Y-m')) as $mes => $list) {
                 $labels[] = $mes;
                 $pagoIds = $list->pluck('id');
-                $montoMes = \App\Models\PagoDetalle::whereIn('pago_id', $pagoIds)
+                $montoMes = PagoDetalle::whereIn('pago_id', $pagoIds)
                     ->whereHas('pago', fn($q) => $q->where('estado', 'aprobado'))
                     ->whereHas('planPago', fn($q) => $q->where('contrato_id', $this->selected_contrato_id))
                     ->sum('subtotal');
@@ -177,17 +244,7 @@ class EstadoCuenta extends Component
         $this->result = [
             'contratos' => $contratos->toArray(),
             'pagos' => $pagos->toArray(),
-            'cuotas_pagadas' => $cuotasPagadas->map(function($c) use ($detallesPorPlan) {
-                $detalle = optional($detallesPorPlan->get($c->id))->first();
-                return [
-                    'contrato_id' => $c->contrato_id,
-                    'numero_contrato' => $c->contrato?->numero_contrato ?? $c->contrato_id,
-                    'numero' => $c->numero_cuota,
-                    'descripcion' => $detalle?->descripcion ?? ($detalle?->conceptoPago?->nombre ?? ("Cuota #{$c->numero_cuota}")),
-                    'fecha_pago' => optional($c->fecha_pago_real)->format('d/m/Y'),
-                    'monto' => $c->monto_total
-                ];
-            })->values()->toArray(),
+            'cuotas_pagadas' => $cuotasPagadasMapped->toArray(),
             'cuotas_pendientes' => $cuotasPendientes->map(function($c) {
                 return [
                     'contrato_id' => $c->contrato_id,
@@ -200,6 +257,9 @@ class EstadoCuenta extends Component
             })->values()->toArray(),
             'resumen' => [
                 'total_pagado' => $totalPagado,
+                'total_pagado_bs' => $totalPagadoBs,
+                'total_cuotas_pagadas_usd' => $totalCuotasPagadasUsd,
+                'total_cuotas_pagadas_bs' => $totalCuotasPagadasBs,
                 'pendiente' => $pendiente,
                 'proximo_vencimiento' => $proximo ? $proximo->fecha_vencimiento->format('d/m/Y') : null,
                 'estado' => $estadoCuenta
@@ -216,7 +276,7 @@ class EstadoCuenta extends Component
     public function exportExcel()
     {
         $contrato = $this->selected_contrato_id ? Contrato::find($this->selected_contrato_id) : null;
-        $headers = ['Tipo', 'Detalle', 'Monto', 'Fecha'];
+        $headers = ['Tipo', 'Contrato', 'Detalle', 'Fecha', 'Tasa (Bs.)', 'Monto ($)', 'Monto (Bs.)'];
         $rows = collect();
         foreach ($this->result['pagos'] as $p) {
             $detallePago = $p['numero_completo'] ?? '';
@@ -225,19 +285,31 @@ class EstadoCuenta extends Component
             }
             $rows->push([
                 'Pago',
+                $contrato ? ($contrato->numero_contrato ?? $contrato->id) : '',
                 $detallePago,
-                $p['total'] ?? 0,
-                !empty($p['fecha']) ? Carbon::parse($p['fecha'])->format('d/m/Y') : ''
+                !empty($p['fecha']) ? Carbon::parse($p['fecha'])->format('d/m/Y') : '',
+                !empty($p['tasa_cambio']) ? (float)$p['tasa_cambio'] : '',
+                (float)($p['total'] ?? 0),
+                (float)($p['total_bolivares'] ?? 0)
             ]);
         }
+        $totCuotasUsd = 0;
+        $totCuotasBs = 0;
         foreach ($this->result['cuotas_pagadas'] as $c) {
             $desc = $c['descripcion'] ?? ($c['numero'] === 0 ? 'Cuota Inicial' : ('Cuota #' . $c['numero']));
             $numContrato = $c['numero_contrato'] ?? $c['contrato_id'];
+            $mUsd = (float)($c['monto'] ?? 0);
+            $mBs = (float)($c['monto_bs'] ?? 0);
+            $totCuotasUsd += $mUsd;
+            $totCuotasBs += $mBs;
             $rows->push([
                 'Cuota Pagada',
-                'Contrato #' . $numContrato . ' - ' . $desc,
-                $c['monto'] ?? 0,
-                $c['fecha_pago'] ?? ''
+                '#' . $numContrato,
+                $desc,
+                $c['fecha_pago'] ?? '',
+                !empty($c['tasa_cambio']) ? (float)$c['tasa_cambio'] : '',
+                $mUsd,
+                $mBs
             ]);
         }
         foreach ($this->result['cuotas_pendientes'] as $c) {
@@ -245,11 +317,26 @@ class EstadoCuenta extends Component
             $numContrato = $c['numero_contrato'] ?? $c['contrato_id'];
             $rows->push([
                 'Cuota Pendiente',
-                'Contrato #' . $numContrato . ' - ' . $descPend,
-                $c['saldo'] ?? 0,
-                $c['vencimiento'] ?? ''
+                '#' . $numContrato,
+                $descPend,
+                $c['vencimiento'] ?? '',
+                '',
+                (float)($c['saldo'] ?? 0),
+                ''
             ]);
         }
+
+        // Fila de sumatorias totales
+        $rows->push([
+            'TOTAL CUOTAS PAGADAS',
+            '',
+            '',
+            '',
+            '',
+            $totCuotasUsd,
+            $totCuotasBs
+        ]);
+
         $cliente = Cliente::find($this->cliente_id);
         $suffix = $contrato ? '_contrato_' . ($contrato->numero_contrato ?? $contrato->id) : '';
         $filename = 'estado_cuenta_' . ($cliente?->documento ?? 'cliente') . $suffix . '_' . now()->format('Y-m-d_His') . '.xlsx';
@@ -261,10 +348,11 @@ class EstadoCuenta extends Component
             public function headings(): array { return $this->headers; }
             public function styles(Worksheet $sheet): ?array
             {
-                $sheet->getStyle('A1:D1')->getFont()->setBold(true);
-                $sheet->getStyle('A1:D1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+                $sheet->getStyle('A1:G1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 $lastRow = $sheet->getHighestRow();
-                $sheet->getStyle("A1:D{$lastRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+                $sheet->getStyle("A1:G{$lastRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+                $sheet->getStyle("A{$lastRow}:G{$lastRow}")->getFont()->setBold(true);
                 return [];
             }
         }, $filename);

@@ -78,7 +78,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h5 class="mb-1">${{ number_format($result['resumen']['total_pagado'] ?? 0, 2) }}</h5>
-                            <small class="text-muted">Total Pagado</small>
+                            <small class="text-muted">Total Pagado @if(!empty($result['resumen']['total_pagado_bs']) && $result['resumen']['total_pagado_bs'] > 0) <span class="text-primary fw-medium">(Bs. {{ number_format($result['resumen']['total_pagado_bs'], 2) }})</span> @endif</small>
                         </div>
                         <div class="avatar">
                             <span class="avatar-initial rounded bg-label-success">
@@ -228,29 +228,58 @@
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover align-middle">
                             <thead class="table-light">
                                 <tr>
                                     <th>Contrato</th>
                                     <th>Descripción</th>
                                     <th>Fecha Pago</th>
-                                    <th class="text-end">Monto</th>
+                                    <th class="text-end">Tasa</th>
+                                    <th class="text-end">Monto ($)</th>
+                                    <th class="text-end">Monto (Bs.)</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                @php
+                                    $totWebUsd = 0;
+                                    $totWebBs = 0;
+                                @endphp
                                 @forelse($result['cuotas_pagadas'] as $c)
+                                @php
+                                    $mUsd = (float)($c['monto'] ?? 0);
+                                    $mBs = (float)($c['monto_bs'] ?? 0);
+                                    $totWebUsd += $mUsd;
+                                    $totWebBs += $mBs;
+                                @endphp
                                 <tr>
-                                    <td>#{{ $c['numero_contrato'] ?? $c['contrato_id'] }}</td>
+                                    <td><strong>#{{ $c['numero_contrato'] ?? $c['contrato_id'] }}</strong></td>
                                     <td>{{ $c['descripcion'] }}</td>
-                                    <td>{{ $c['fecha_pago'] }}</td>
-                                    <td class="text-end">${{ number_format($c['monto'], 2) }}</td>
+                                    <td>{{ $c['fecha_pago'] ?: '-' }}</td>
+                                    <td class="text-end text-muted">{{ !empty($c['tasa_cambio']) ? number_format($c['tasa_cambio'], 2) : '-' }}</td>
+                                    <td class="text-end fw-bold text-success">${{ number_format($mUsd, 2) }}</td>
+                                    <td class="text-end fw-bold text-primary">Bs. {{ number_format($mBs, 2) }}</td>
                                 </tr>
                                 @empty
-                                <tr><td colspan="4" class="text-muted text-center">Sin cuotas pagadas</td></tr>
+                                <tr><td colspan="6" class="text-muted text-center py-3">Sin cuotas pagadas</td></tr>
                                 @endforelse
                             </tbody>
+                            @if(!empty($result['cuotas_pagadas']) && count($result['cuotas_pagadas']) > 0)
+                            <tfoot class="table-light fw-bold border-top">
+                                <tr>
+                                    <td colspan="4" class="text-end">TOTAL PAGADO:</td>
+                                    <td class="text-end text-success">${{ number_format($totWebUsd, 2) }}</td>
+                                    <td class="text-end text-primary">Bs. {{ number_format($totWebBs, 2) }}</td>
+                                </tr>
+                            </tfoot>
+                            @endif
                         </table>
                     </div>
+                    @if(!empty($result['cuotas_pagadas']) && count($result['cuotas_pagadas']) > 0)
+                    <div class="d-flex justify-content-between align-items-center mt-3 p-2 bg-lighter rounded border">
+                        <span class="small"><strong>Sumatoria Divisa:</strong> <span class="text-success fw-bold ms-1">${{ number_format($totWebUsd, 2) }}</span></span>
+                        <span class="small"><strong>Sumatoria Bolívares:</strong> <span class="text-primary fw-bold ms-1">Bs. {{ number_format($totWebBs, 2) }}</span></span>
+                    </div>
+                    @endif
                 </div>
             </div>
         </div>
