@@ -395,7 +395,7 @@ class ExportImportService
         if ($includeHeaders) {
             $col = 1;
             foreach ($columns as $column) {
-                $sheet->setCellValueByColumnAndRow($col, $row, $this->formatColumnHeader($column));
+                $sheet->setCellValue([$col, $row], $this->formatColumnHeader($column));
                 $col++;
             }
             $row++;
@@ -409,7 +409,7 @@ class ExportImportService
                     if ($value instanceof \DateTime) {
                         $value = $value->format($dateFormat);
                     }
-                    $sheet->setCellValueByColumnAndRow($col, $row, $value);
+                    $sheet->setCellValue([$col, $row], $value);
                     $col++;
                 }
                 $row++;

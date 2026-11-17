@@ -262,7 +262,7 @@
                                                 @php
                                                     $statusClass = match($contrato->estado) {
                                                         'activo' => 'success',
-                                                        'finalizado' => 'primary',
+                                                        'completado', 'finalizado' => 'primary',
                                                         'cancelado' => 'danger',
                                                         'mora' => 'warning',
                                                         default => 'secondary'

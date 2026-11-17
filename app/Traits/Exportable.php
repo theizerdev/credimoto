@@ -33,7 +33,7 @@ trait Exportable
                 $this->headers = $headers;
             }
             
-            public function collection()
+            public function collection(): \Illuminate\Support\Enumerable
             {
                 return $this->data;
             }
@@ -43,7 +43,7 @@ trait Exportable
                 return $this->headers;
             }
             
-            public function styles(Worksheet $sheet)
+            public function styles(Worksheet $sheet): ?array
             {
                 $lastColumn = $sheet->getHighestColumn();
                 $lastRow = $sheet->getHighestRow();

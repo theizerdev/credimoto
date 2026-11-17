@@ -84,7 +84,7 @@ class Create extends Component
         'detalles.*.precio_unitario' => 'required|numeric|min:0',
     ];
 
-    public function mount()
+    public function mount($cliente_id = null)
     {
         $this->fecha = now()->format('Y-m-d');
         $this->fecha_pago = now()->format('Y-m-d');
@@ -96,6 +96,11 @@ class Create extends Component
         $this->inicializarPagoMixto();
         $this->cargarPlantillasPago();
         $this->checkWhatsAppStatus();
+
+        $targetClienteId = $cliente_id ?: request()->query('cliente_id');
+        if ($targetClienteId) {
+            $this->seleccionarCliente($targetClienteId);
+        }
     }
 
     public function inicializarPagoMixto()
@@ -175,7 +180,10 @@ class Create extends Component
     public function cargarContratos($clienteId)
     {
         $this->contratos = Contrato::where('cliente_id', $clienteId)
-            ->whereIn('estado', ['activo', 'mora'])
+            ->where(function ($q) {
+                $q->whereIn('estado', ['activo', 'mora'])
+                  ->orWhere('saldo_pendiente', '>', 0);
+            })
             ->get();
 
         if ($this->contratos->count() === 1) {
@@ -191,7 +199,8 @@ class Create extends Component
     {
         if ($value) {
             $this->cuotasPendientes = PlanPago::where('contrato_id', $value)
-                ->whereIn('estado', ['pendiente', 'parcial'])
+                ->where('saldo_pendiente', '>', 0)
+                ->where('estado', '!=', 'pagado')
                 ->orderBy('fecha_vencimiento')
                 ->get();
         } else {
@@ -328,6 +337,11 @@ class Create extends Component
         $planPago = PlanPago::find($planPagoId);
 
         if ($planPago) {
+            // Si el primer renglón está vacío, reemplazarlo
+            if (count($this->detalles) === 1 && empty($this->detalles[0]['descripcion'])) {
+                $this->detalles = [];
+            }
+
             // Buscar conceptos apropiados
             $conceptoMensualidad = ConceptoPago::where('nombre', 'like', '%Mensualidad%')->first();
 
@@ -389,6 +403,11 @@ class Create extends Component
             $conceptoMensualidad = ConceptoPago::where('nombre', 'like', '%Mensualidad%')->first();
             if (!$conceptoMensualidad) {
                 $conceptoMensualidad = ConceptoPago::first();
+            }
+
+            // Si el primer renglón está vacío, reemplazarlo
+            if (count($this->detalles) === 1 && empty($this->detalles[0]['descripcion'])) {
+                $this->detalles = [];
             }
 
             // Agregar el adelanto como detalle

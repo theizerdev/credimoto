@@ -115,7 +115,7 @@ class Register extends Component
             }
 
             // 2. Actualizar Contrato
-            $pagadas = $this->contrato->planPagos()->where('estado', 'pagado')->count();
+            $pagadas = $this->contrato->planPagos()->where('numero_cuota', '>', 0)->where('estado', 'pagado')->count();
             $saldo_contrato = $this->contrato->planPagos()->sum('saldo_pendiente');
             
             $estado_contrato = $saldo_contrato <= 0 ? 'completado' : 'activo';

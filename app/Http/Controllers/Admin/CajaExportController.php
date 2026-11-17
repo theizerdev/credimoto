@@ -76,7 +76,7 @@ class CajaExportController extends Controller
         $row++;
         $encabezados = ['Documento', 'Cliente', 'Método', 'Monto USD', 'Monto Bs', 'Referencia', 'Hora'];
         foreach ($encabezados as $col => $encabezado) {
-            $sheet->setCellValueByColumnAndRow($col + 1, $row, $encabezado);
+            $sheet->setCellValue([$col + 1, $row], $encabezado);
         }
         $sheet->getStyle('A' . $row . ':G' . $row)->getFont()->setBold(true);
         

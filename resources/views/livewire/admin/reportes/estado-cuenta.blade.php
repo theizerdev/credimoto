@@ -38,19 +38,34 @@
                         <option value="cancelado">Cancelado</option>
                     </select>
                 </div>
-                <div class="col-md-12 d-flex gap-2">
+                <div class="col-md-12 d-flex gap-2 flex-wrap align-items-center">
                     <button class="btn btn-primary" wire:click="search">
                         <i class="ri ri-search-line me-1"></i> Consultar
                     </button>
                     <button class="btn btn-label-success" wire:click="exportExcel">
                         <i class="mdi mdi-file-excel me-1"></i> Exportar Excel
+                        @if($selected_contrato_id)
+                            @php $cSel = collect($result['contratos'])->firstWhere('id', $selected_contrato_id); @endphp
+                            <span class="badge bg-success text-white ms-1">Contrato #{{ $cSel['numero_contrato'] ?? $selected_contrato_id }}</span>
+                        @endif
                     </button>
                     <button class="btn btn-label-danger" wire:click="exportPdf">
                         <i class="ri ri-file-pdf-2-line me-1"></i> Exportar PDF
+                        @if($selected_contrato_id)
+                            @php $cSel = collect($result['contratos'])->firstWhere('id', $selected_contrato_id); @endphp
+                            <span class="badge bg-danger text-white ms-1">Contrato #{{ $cSel['numero_contrato'] ?? $selected_contrato_id }}</span>
+                        @endif
                     </button>
                     <button class="btn btn-label-info" wire:click="sendReminders">
                         <i class="ri ri-notification-line me-1"></i> Enviar Recordatorios
                     </button>
+
+                    @if($selected_contrato_id)
+                        @php $cSel = collect($result['contratos'])->firstWhere('id', $selected_contrato_id); @endphp
+                        <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" wire:click="selectContrato({{ $selected_contrato_id }})">
+                            <i class="ri ri-close-circle-line me-1"></i> Quitar filtro de Contrato (Ver Todos)
+                        </button>
+                    @endif
                 </div>
             </div>
         </div>
@@ -133,30 +148,67 @@
     </div>
 
     <div class="card mb-3">
-        <div class="card-header">
-            <h6 class="mb-0">Contratos</h6>
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h6 class="mb-0 d-inline-block">Contratos</h6>
+                @if($selected_contrato_id)
+                    @php $cSel = collect($result['contratos'])->firstWhere('id', $selected_contrato_id); @endphp
+                    <span class="badge bg-primary ms-2">
+                        <i class="ri ri-filter-line me-1"></i> Mostrando solo Contrato #{{ $cSel['numero_contrato'] ?? $selected_contrato_id }}
+                    </span>
+                @else
+                    <span class="text-muted small ms-2">(Haga clic en un contrato para filtrar el estado de cuenta y exportarlo individualmente)</span>
+                @endif
+            </div>
+            @if($selected_contrato_id)
+                <button type="button" class="btn btn-sm btn-outline-primary" wire:click="selectContrato({{ $selected_contrato_id }})">
+                    <i class="ri ri-refresh-line me-1"></i> Ver todos los contratos
+                </button>
+            @endif
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover">
+                <table class="table table-hover align-middle">
                     <thead class="table-light">
                         <tr>
                             <th>N° Contrato</th>
                             <th>Unidad</th>
                             <th>Inicio</th>
                             <th>Estado</th>
+                            <th class="text-center" style="width: 140px;">Selección</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($result['contratos'] as $c)
-                            <tr>
-                                <td>{{ $c['numero_contrato'] ?? $c['id'] }}</td>
+                            @php $isSelected = ($selected_contrato_id == $c['id']); @endphp
+                            <tr wire:click="selectContrato({{ $c['id'] }})"
+                                style="cursor: pointer;"
+                                class="{{ $isSelected ? 'table-primary border-primary fw-medium' : '' }}">
+                                <td>
+                                    @if($isSelected)
+                                        <i class="ri ri-radio-button-fill text-primary me-1 fs-5 align-middle"></i>
+                                    @else
+                                        <i class="ri ri-checkbox-blank-circle-line text-muted me-1 fs-5 align-middle"></i>
+                                    @endif
+                                    <strong>{{ $c['numero_contrato'] ?? $c['id'] }}</strong>
+                                </td>
                                 <td>{{ $c['unidad']['moto']['marca'] ?? '' }} {{ $c['unidad']['moto']['modelo'] ?? '' }} ({{ $c['unidad']['moto']['anio'] ?? '' }})</td>
                                 <td>{{ \Carbon\Carbon::parse($c['created_at'])->format('d/m/Y') }}</td>
                                 <td><span class="badge bg-label-{{ ($c['estado'] ?? '') === 'mora' ? 'danger' : 'primary' }}">{{ ucfirst($c['estado'] ?? 'borrador') }}</span></td>
+                                <td class="text-center" onclick="event.stopPropagation();">
+                                    @if($isSelected)
+                                        <button type="button" class="btn btn-xs btn-primary px-3 shadow-sm" wire:click="selectContrato({{ $c['id'] }})">
+                                            <i class="ri ri-check-line me-1"></i> Seleccionado
+                                        </button>
+                                    @else
+                                        <button type="button" class="btn btn-xs btn-outline-primary px-3" wire:click="selectContrato({{ $c['id'] }})">
+                                            Filtrar
+                                        </button>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="4" class="text-muted text-center">Sin contratos</td></tr>
+                            <tr><td colspan="5" class="text-muted text-center">Sin contratos</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -167,8 +219,12 @@
     <div class="row">
         <div class="col-lg-6">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">Cuotas Pagadas</h6>
+                    @if($selected_contrato_id)
+                        @php $cSel = collect($result['contratos'])->firstWhere('id', $selected_contrato_id); @endphp
+                        <span class="badge bg-label-primary">Contrato #{{ $cSel['numero_contrato'] ?? $selected_contrato_id }}</span>
+                    @endif
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -184,7 +240,7 @@
                             <tbody>
                                 @forelse($result['cuotas_pagadas'] as $c)
                                 <tr>
-                                    <td>#{{ $c['contrato_id'] }}</td>
+                                    <td>#{{ $c['numero_contrato'] ?? $c['contrato_id'] }}</td>
                                     <td>{{ $c['descripcion'] }}</td>
                                     <td>{{ $c['fecha_pago'] }}</td>
                                     <td class="text-end">${{ number_format($c['monto'], 2) }}</td>
@@ -200,8 +256,12 @@
         </div>
         <div class="col-lg-6">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">Cuotas Pendientes</h6>
+                    @if($selected_contrato_id)
+                        @php $cSel = collect($result['contratos'])->firstWhere('id', $selected_contrato_id); @endphp
+                        <span class="badge bg-label-primary">Contrato #{{ $cSel['numero_contrato'] ?? $selected_contrato_id }}</span>
+                    @endif
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -218,7 +278,7 @@
                             <tbody>
                                 @forelse($result['cuotas_pendientes'] as $c)
                                 <tr>
-                                    <td>#{{ $c['contrato_id'] }}</td>
+                                    <td>#{{ $c['numero_contrato'] ?? $c['contrato_id'] }}</td>
                                     <td>{{ $c['numero'] }}</td>
                                     <td>{{ $c['vencimiento'] }}</td>
                                     <td><span class="badge bg-label-{{ $c['estado'] === 'vencido' ? 'danger' : ($c['estado'] === 'parcial' ? 'warning' : 'secondary') }}">{{ ucfirst($c['estado']) }}</span></td>

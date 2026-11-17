@@ -121,18 +121,29 @@ class PagoService
         $contrato = \App\Models\Contrato::find($contratoId);
         if ($contrato) {
             $pendientes = PlanPago::where('contrato_id', $contratoId)
-                ->whereIn('estado', ['pendiente', 'parcial'])
+                ->where('saldo_pendiente', '>', 0)
+                ->where('estado', '!=', 'pagado')
                 ->count();
                 
             if ($pendientes === 0) {
-                $contrato->estado = 'finalizado';
-                $contrato->save();
+                $contrato->estado = 'completado';
+            } else {
+                $vencidas = PlanPago::where('contrato_id', $contratoId)
+                    ->where('saldo_pendiente', '>', 0)
+                    ->where('fecha_vencimiento', '<', now())
+                    ->where('estado', '!=', 'pagado')
+                    ->count();
+                $contrato->cuotas_vencidas = $vencidas;
+                $contrato->estado = ($vencidas > 0) ? 'mora' : 'activo';
             }
             
             // Recalcular saldo pendiente del contrato
             $saldoTotal = PlanPago::where('contrato_id', $contratoId)->sum('saldo_pendiente');
             $contrato->saldo_pendiente = $saldoTotal;
-            $contrato->cuotas_pagadas = PlanPago::where('contrato_id', $contratoId)->where('estado', 'pagado')->count();
+            $contrato->cuotas_pagadas = PlanPago::where('contrato_id', $contratoId)
+                ->where('numero_cuota', '>', 0)
+                ->where('estado', 'pagado')
+                ->count();
             $contrato->save();
         }
     }

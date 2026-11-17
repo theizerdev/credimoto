@@ -207,7 +207,7 @@ class Procesar extends Component
         return Excel::download(new class($rows) implements FromCollection, WithHeadings, ShouldAutoSize {
             private $rows;
             public function __construct($rows) { $this->rows = $rows; }
-            public function collection() { return $this->rows; }
+            public function collection(): \Illuminate\Support\Enumerable { return $this->rows; }
             public function headings(): array { return ['Empleado', 'Concepto', 'Tipo', 'Cantidad', 'Unitario', 'Subtotal']; }
         }, 'nomina_' . now()->format('Ymd_His') . '.xlsx');
     }
