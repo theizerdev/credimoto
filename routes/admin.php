@@ -35,7 +35,13 @@ use App\Livewire\Admin\Contratos\Edit as ContratosEdit;
 use App\Livewire\Admin\Contratos\Show as ContratosShow;
 use App\Livewire\Admin\Pagos\Register as PagosRegister;
 
-
+// Dashboard AJAX y Exportaciones
+Route::get('/dashboard/data', [\App\Livewire\Admin\Dashboard\Index::class, 'ajaxData'])->name('dashboard.data');
+Route::post('/dashboard/notify-whatsapp', [\App\Livewire\Admin\Dashboard\Index::class, 'ajaxNotifyWhatsApp'])->name('dashboard.notify-whatsapp');
+Route::post('/dashboard/schedule-reminders', [\App\Livewire\Admin\Dashboard\Index::class, 'ajaxScheduleReminders'])->name('dashboard.schedule-reminders');
+Route::get('/dashboard/export-excel', [\App\Livewire\Admin\Dashboard\Index::class, 'exportExcel'])->name('dashboard.export-excel');
+Route::get('/dashboard/export-pdf', [\App\Livewire\Admin\Dashboard\Index::class, 'exportPdf'])->name('dashboard.export-pdf');
+Route::get('/dashboard/cliente/{cliente}/pendientes', [\App\Livewire\Admin\Dashboard\Index::class, 'ajaxClientePendientes'])->name('dashboard.cliente-pendientes');
 
 // Empresas
 Route::get('/empresas', EmpresasIndex::class)->name('empresas.index');

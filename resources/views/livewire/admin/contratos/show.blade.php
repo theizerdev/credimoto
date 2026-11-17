@@ -148,7 +148,7 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="card-title mb-0">Plan de Pagos</h6>
-                    @if($contrato->estado === 'activo' || $contrato->estado === 'mora')
+                    @if($contrato->saldo_pendiente > 0 || in_array($contrato->estado, ['activo', 'mora']))
                         <a href="{{ route('admin.contratos.pagar', $contrato->id) }}" class="btn btn-sm btn-primary">
                             <i class="ri ri-money-dollar-circle-line me-1"></i> Registrar Pago
                         </a>
@@ -197,7 +197,7 @@
                                     </span>
                                 </td>
                                 <td>
-                                    @if($cuota->saldo_pendiente > 0 && in_array($contrato->estado, ['activo', 'mora']))
+                                    @if($cuota->saldo_pendiente > 0)
                                         <a href="{{ route('admin.contratos.pagar', $contrato->id) }}" class="btn btn-sm btn-icon btn-label-primary" title="Pagar Cuota">
                                             <i class="ri ri-hand-coin-line"></i>
                                         </a>

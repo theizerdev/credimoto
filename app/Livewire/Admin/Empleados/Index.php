@@ -53,7 +53,7 @@ class Index extends Component
         $ext = strtolower($this->importFile->getClientOriginalExtension());
         $count = 0;
         if ($ext === 'xlsx') {
-            $rows = \Maatwebsite\Excel\Facades\Excel::toArray(null, $this->importFile);
+            $rows = \Maatwebsite\Excel\Facades\Excel::toArray(new class implements \Maatwebsite\Excel\Concerns\Import {}, $this->importFile);
             $dataRows = $rows[0] ?? [];
             $header = array_map('strtolower', array_map('trim', $dataRows[0] ?? []));
             foreach (array_slice($dataRows, 1) as $row) {
